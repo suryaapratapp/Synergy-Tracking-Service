@@ -1,4 +1,18 @@
-export type UserRole = 'admin' | 'synergy' | 'hospital'
+export type UserRole = 'admin' | 'synergy' | 'synergy_field' | 'hospital'
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Administrator',
+  synergy: 'Synergy',
+  synergy_field: 'Synergy field',
+  hospital: 'Hospital',
+}
+
+export const ROLE_HELP: Record<UserRole, string> = {
+  admin: 'Full access, including QR labels and user management',
+  synergy: 'All sites and all products, including reports',
+  synergy_field: 'All sites for install and take-down work, without reports',
+  hospital: 'One hospital only — its own products and installations',
+}
 export type ItemStatus = 'registered' | 'in_use' | 'removed' | 'retired'
 export type RemovalReason = 'expired' | 'soiled' | 'damage'
 

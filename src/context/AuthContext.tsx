@@ -17,9 +17,11 @@ interface AuthValue {
   session: Session | null
   profile: Profile | null
   loading: boolean
-  /** Admin and Synergy see every site; hospital logins are pinned to one. */
+  /** Admin and both Synergy roles see every site; hospital logins are pinned to one. */
   isGlobal: boolean
   isAdmin: boolean
+  /** The field role does the fitting work but is not shown Reports. */
+  canViewReports: boolean
   signIn: (username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -135,8 +137,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       loading,
-      isGlobal: profile?.role === 'admin' || profile?.role === 'synergy',
+      isGlobal:
+        profile?.role === 'admin' ||
+        profile?.role === 'synergy' ||
+        profile?.role === 'synergy_field',
       isAdmin: profile?.role === 'admin',
+      canViewReports: !!profile && profile.role !== 'synergy_field',
       signIn,
       signOut,
       refreshProfile,

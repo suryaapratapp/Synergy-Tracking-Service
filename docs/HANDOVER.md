@@ -14,8 +14,35 @@ before the system carries real data.**
 |---|---|---|
 | Admin | `admin` | `Admin@2026!` |
 | Synergy | `synergy` | `Synergy@2026!` |
+| Synergy field | `fitter` | `Fitter@2026!` |
 | Hospital (Queen Mary) | `queenmary` | `Hospital@2026!` |
 | Hospital (St Thomas) | `stthomas` | `Hospital@2026!` |
+
+### The four roles
+
+| Role | Sees | Reports |
+|---|---|---|
+| **Administrator** | Everything, plus QR labels, users and settings | Yes |
+| **Synergy** | All sites and all products | Yes |
+| **Synergy field** | All sites — install, take down, register, locations | **No** |
+| **Hospital** | Its own hospital only | Yes, scoped to that site |
+
+**Synergy field** is for team members who do the fitting work but should not be
+shown the reporting side. It is identical to Synergy in every other respect: the
+same reach across every site, the same install / take-down / register screens.
+Reports is removed from the navigation and the `/reports` address redirects home.
+
+> Worth knowing: this is a **navigation-level** permission, not a data firewall.
+> The take-down screen has to read installation records to list what is in a bay,
+> so a field user's login can still reach that data through the API directly —
+> it is only the Reports feature that is withheld. If you need a hard boundary
+> (field staff able to read nothing beyond the bay they are working in), say so
+> and I will scope their row-level access down; it is a larger change because it
+> touches the take-down workflow.
+>
+> The Products screen still offers its CSV export to this role. I left it alone
+> because you asked specifically about Reports — one line to remove it if you
+> would rather they could not export either.
 
 Supabase Auth is email-keyed underneath, so each account carries a deterministic
 internal address `<username>@synergy.local`. Nothing is ever sent to it — it is

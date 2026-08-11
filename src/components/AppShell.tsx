@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { APP_NAME, DEVELOPER } from '../lib/branding'
+import { ROLE_LABELS } from '../lib/types'
 import { Sheet, useOnlineStatus } from './ui'
 
 interface NavItem {
@@ -12,7 +13,7 @@ interface NavItem {
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const { profile, signOut, isGlobal, isAdmin } = useAuth()
+  const { profile, signOut, isGlobal, isAdmin, canViewReports } = useAuth()
   const [moreOpen, setMoreOpen] = useState(false)
   const navigate = useNavigate()
   const online = useOnlineStatus()
@@ -27,13 +28,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const secondary: NavItem[] = [
     ...(isAdmin ? [{ to: '/labels', label: 'QR labels', icon: <IconQr /> }] : []),
     ...(isGlobal ? [{ to: '/register', label: 'Register labels', icon: <IconTag /> }] : []),
-    { to: '/reports', label: 'Reports', icon: <IconChart /> },
+    ...(canViewReports ? [{ to: '/reports', label: 'Reports', icon: <IconChart /> }] : []),
     ...(isGlobal ? [{ to: '/locations', label: 'Locations', icon: <IconPin /> }] : []),
     ...(isAdmin ? [{ to: '/admin', label: 'Users & settings', icon: <IconCog /> }] : []),
   ]
 
-  const roleLabel =
-    profile?.role === 'admin' ? 'Administrator' : profile?.role === 'synergy' ? 'Synergy' : 'Hospital'
+  const roleLabel = profile ? ROLE_LABELS[profile.role] : 'Hospital'
 
   return (
     <div className="shell">

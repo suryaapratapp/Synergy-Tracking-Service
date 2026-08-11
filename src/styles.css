@@ -130,7 +130,12 @@ a { color: inherit; text-decoration: none; }
 /* On a phone the header has no room for it; the role is on the More sheet. */
 .topbar-right > .role-chip { display: none; }
 @media (min-width: 560px) { .topbar-right > .role-chip { display: inline-flex; } }
-.user-side .role-chip { background: var(--brand-tint); color: var(--brand-darker); }
+.user-side .role-chip {
+  background: var(--brand-tint); color: var(--brand-darker); text-transform: none;
+  letter-spacing: 0; font-size: 0.7rem;
+}
+.user-side .role-chip.role-synergy_field { background: #e3f2fd; color: #14539e; }
+.user-side .role-chip.role-hospital { background: #eef1f2; color: #4b5563; }
 
 .offline-bar {
   background: #7c2d12; color: #fff; font-size: 0.85rem;

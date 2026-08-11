@@ -56,6 +56,7 @@ email address.
 |---|---|---|
 | **Admin** | Everything | Everything, plus generate QR labels, create accounts and set the change-due window |
 | **Synergy** | All sites and all products | Register labels, install, take down, import locations, report |
+| **Synergy field** | All sites and all products | The same, but **without Reports** — for team members who do the fitting work only |
 | **Hospital** | Only its own hospital | Install, take down and report for that site |
 
 Scoping is enforced in the database (row level security), not just the interface:

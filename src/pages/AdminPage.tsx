@@ -4,13 +4,9 @@ import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { Card, EmptyState, Field, SectionTitle, Sheet, Spinner, useToast } from '../components/ui'
 import { formatDate } from '../lib/format'
-import type { Profile, UserRole } from '../lib/types'
+import { ROLE_HELP, ROLE_LABELS, type Profile, type UserRole } from '../lib/types'
 
-const ROLE_HELP: Record<UserRole, string> = {
-  admin: 'Full access, including user management',
-  synergy: 'All sites and all products',
-  hospital: 'One hospital only — its own products and installations',
-}
+const ASSIGNABLE_ROLES: UserRole[] = ['hospital', 'synergy_field', 'synergy', 'admin']
 
 export default function AdminPage() {
   const { profile: me } = useAuth()
@@ -123,7 +119,7 @@ export default function AdminPage() {
                     <span className="user-email">@{u.username}</span>
                   </span>
                   <span className="user-side">
-                    <span className={`role-chip role-${u.role}`}>{u.role}</span>
+                    <span className={`role-chip role-${u.role}`}>{ROLE_LABELS[u.role]}</span>
                     {u.role === 'hospital' && <span className="user-hosp">{hospitalName(u.hospital_id)}</span>}
                     {!u.active && <span className="badge badge-retired">Disabled</span>}
                   </span>
@@ -160,9 +156,11 @@ export default function AdminPage() {
                 value={editing.role}
                 onChange={(e) => setEditing({ ...editing, role: e.target.value as UserRole })}
               >
-                <option value="admin">Admin</option>
-                <option value="synergy">Synergy</option>
-                <option value="hospital">Hospital</option>
+                {ASSIGNABLE_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
               </select>
             </Field>
 
@@ -344,9 +342,11 @@ function AddUserSheet({
             value={role}
             onChange={(e) => setRole(e.target.value as UserRole)}
           >
-            <option value="hospital">Hospital</option>
-            <option value="synergy">Synergy</option>
-            <option value="admin">Admin</option>
+            {ASSIGNABLE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </option>
+            ))}
           </select>
         </Field>
 

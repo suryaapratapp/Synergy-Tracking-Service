@@ -5,10 +5,15 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
  * Creates a login. Creating auth users needs the service role key, which must
  * never reach the browser - so it lives here, and the function only acts after
  * confirming the caller's own JWT belongs to an active admin.
+ *
+ * Accounts are addressed by username. Supabase Auth is email-keyed, so each
+ * account gets a deterministic internal address, <username>@synergy.local,
+ * which is only ever an identifier - nothing is sent to it.
  */
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const LOGIN_DOMAIN = 'synergy.local'
 
 // Echo whatever headers the browser asks for: the web client attaches its own
 // tracing header, and a fixed allow-list silently fails the preflight.
@@ -24,7 +29,8 @@ function cors(req: Request) {
   }
 }
 
-const ROLES = new Set(['admin', 'synergy', 'hospital'])
+const ROLES = new Set(['admin', 'synergy', 'synergy_field', 'hospital'])
+const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/
 
 Deno.serve(async (req: Request) => {
   const headers = { ...cors(req), 'Content-Type': 'application/json' }
@@ -65,16 +71,31 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Invalid request body' }, 400)
   }
 
-  const email = String(body.email ?? '').trim().toLowerCase()
+  const username = String(body.username ?? '').trim().toLowerCase()
   const password = String(body.password ?? '')
   const fullName = String(body.full_name ?? '').trim()
   const role = String(body.role ?? 'hospital')
   const hospitalId = body.hospital_id ? String(body.hospital_id) : null
 
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'Enter a valid email address' }, 400)
+  if (!USERNAME_RE.test(username)) {
+    return json(
+      {
+        error:
+          'Usernames are 3-32 characters: lowercase letters, numbers, dots, dashes or underscores',
+      },
+      400,
+    )
+  }
   if (password.length < 8) return json({ error: 'Password must be at least 8 characters' }, 400)
   if (!ROLES.has(role)) return json({ error: 'Unknown role' }, 400)
   if (role === 'hospital' && !hospitalId) return json({ error: 'Hospital users need a hospital' }, 400)
+
+  const { data: taken } = await admin
+    .from('profiles')
+    .select('id')
+    .ilike('username', username)
+    .maybeSingle()
+  if (taken) return json({ error: `The username "${username}" is already taken` }, 400)
 
   if (hospitalId) {
     const { data: hospital } = await admin
@@ -88,11 +109,12 @@ Deno.serve(async (req: Request) => {
   // 4. Create the user. The on_auth_user_created trigger builds the profile
   //    from this metadata.
   const { data: created, error: createError } = await admin.auth.admin.createUser({
-    email,
+    email: `${username}@${LOGIN_DOMAIN}`,
     password,
     email_confirm: true,
     user_metadata: {
-      full_name: fullName || email.split('@')[0],
+      username,
+      full_name: fullName || username,
       role,
       hospital_id: hospitalId ?? '',
     },
@@ -100,7 +122,7 @@ Deno.serve(async (req: Request) => {
 
   if (createError) {
     const msg = /already been registered|already exists/i.test(createError.message)
-      ? 'That email address already has an account'
+      ? `The username "${username}" is already taken`
       : createError.message
     return json({ error: msg }, 400)
   }
@@ -108,8 +130,8 @@ Deno.serve(async (req: Request) => {
   // 5. Belt and braces - make sure the profile matches what was asked for.
   await admin
     .from('profiles')
-    .update({ role, hospital_id: hospitalId, full_name: fullName || null })
+    .update({ role, hospital_id: hospitalId, full_name: fullName || username, username })
     .eq('id', created.user!.id)
 
-  return json({ id: created.user!.id, email, role })
+  return json({ id: created.user!.id, username, role })
 })

@@ -38,6 +38,12 @@ function RequireAdmin({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+function RequireReports({ children }: { children: ReactNode }) {
+  const { canViewReports } = useAuth()
+  if (!canViewReports) return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
 function FullPageSpinner() {
   return (
     <div className="full-centre">
@@ -66,7 +72,14 @@ export default function App() {
                   <Route path="/takedown" element={<TakedownPage />} />
                   <Route path="/inventory" element={<InventoryPage />} />
                   <Route path="/inventory/:id" element={<ProductDetailPage />} />
-                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route
+                    path="/reports"
+                    element={
+                      <RequireReports>
+                        <ReportsPage />
+                      </RequireReports>
+                    }
+                  />
                   <Route
                     path="/register"
                     element={
