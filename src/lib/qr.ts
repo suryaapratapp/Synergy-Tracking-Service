@@ -1,11 +1,14 @@
 import QRCode from 'qrcode'
 
 /**
- * Label codes are `RZCIR-<first four letters of the product>-<6 digits>`,
- * e.g. RZCIR-CURT-048213. The database generates and reserves them; these
- * helpers only mirror the format for previews and validation.
+ * Label codes are `RZCIR-<first four letters of the product>-AAAAXXXX`,
+ * e.g. RZCIR-CURT-AAAA0001 — four letters then four digits, issued in
+ * ascending serial order. The database mints and reserves them; these
+ * helpers only mirror the format for previews.
  */
 export const CODE_PREFIX = 'RZCIR'
+/** Shape of the serial block, shown in previews. */
+export const SERIAL_SAMPLE = 'AAAA0001'
 
 export function codePrefixFor(productType: string): string {
   const letters = (productType || 'Product').replace(/[^a-zA-Z]/g, '').slice(0, 4)
@@ -13,7 +16,7 @@ export function codePrefixFor(productType: string): string {
 }
 
 export function sampleCode(productType: string): string {
-  return `${codePrefixFor(productType)}000000`
+  return `${codePrefixFor(productType)}${SERIAL_SAMPLE}`
 }
 
 /** Renders a code as a standalone SVG string, sized by the caller's CSS. */

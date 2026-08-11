@@ -110,6 +110,7 @@ export interface DashboardData {
     overdue: number
     due_7: number
     due_14: number
+    due_30: number
     hospitals: number
     installed_30: number
     removed_30: number

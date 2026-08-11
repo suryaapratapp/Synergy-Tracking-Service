@@ -29,21 +29,23 @@ the privileged key never reaches the browser.
 ## 2. What the app does
 
 **QR labels** (admin only) — generates label codes in the fixed format
-`RZCIR-<first four letters of the product>-<6 digits>`, e.g. `RZCIR-CURT-048213`.
-Choose the product and a quantity (up to 500 per click), press generate, then
-download the CSV for the label printer or print a ready-made sheet of 28 × 34 mm
-labels. Each label carries the QR with the code printed underneath, so a damaged
-label can still be typed in. A preview of the exact label is shown before
-generating.
+`RZCIR-<first four letters of the product>-AAAAXXXX`, e.g. `RZCIR-CURT-AAAA0001`
+— four letters then four digits. Choose the product and a quantity (up to 500 per
+click), press generate, then download the CSV for the label printer or print a
+ready-made sheet of 28 × 34 mm labels. Each label carries the QR with the code
+printed underneath, so a damaged label can still be typed in. A preview of the
+exact label is shown before generating.
 
-> **Uniqueness — worth confirming.** You asked that a code never repeat while it
-> is in use, and may be reused once free. The generator is currently *stricter*
-> than that: it never issues a code that **any** product still holds, whatever its
-> status. That is deliberate — every code carries its own full lifecycle history,
-> and recycling a number onto a different curtain would graft one curtain's
-> history onto another. With six digits there are 900,000 numbers per product
-> line, so exhaustion is not a practical concern. If you do want retired codes
-> recycled, it is a one-line change in `rpc_generate_product_codes`.
+**Codes are issued in ascending serial order and are never reused.** The order
+runs `AAAA0001 → AAAA9999 → AAAB0001 → …`, giving 4,569,105,024 codes per product
+line. Each product line keeps its own series (`RZCIR-BEDS-AAAA0001` starts fresh).
+
+The counter lives in `public.code_counters`, not in the products table, which is
+what makes "never reused" hold absolutely: deleting a product — or wiping the
+entire demo dataset — does not rewind it, so a retired number can never come round
+again. Blocks are reserved atomically, so two admins generating at once can never
+be handed the same serial. Verified by deleting freshly issued codes and
+confirming the next run skipped past them.
 
 **Register** (Synergy only) — labels are applied at the Synergy site and each
 product is scanned onto the system. Batch, size and colour are set once per run
@@ -51,14 +53,16 @@ and applied to every scan. A paste-a-list mode covers bulk labelling.
 
 **Install** — the fitter picks Hospital → Floor → Ward → Bay once, then scans each
 product into that bay. Date and installer are recorded automatically and the
-change-due date is set to **14 days** (configurable in Users & settings, and
+change-due date is set to **180 days** (configurable in Users & settings, and
 overridable per install). The chosen location is remembered between visits.
 
-**Take down** — two routes, because both happen in practice:
-- *By location* (the normal round): pick the bay, tick what is coming down,
-  choose a reason, confirm. Reasons are **Expired** (default), **Soiled**,
-  **Damage**.
-- *By scan*: scan an individual product coming down out of cycle.
+**Take down** — two routes, because both happen in practice. **By scan** is the
+default:
+- *By scan*: scan the product coming down; it is logged straight away with the
+  chosen reason.
+- *By location*: pick the bay, tick what is coming down, choose a reason, confirm.
+
+Reasons are **Expired** (default), **Soiled**, **Damage**.
 
 **Dashboard / Reports** — live counts, overdue and due-soon lists, fleet
 composition, 12-month install vs take-down trend, reasons breakdown, per-hospital
@@ -83,6 +87,41 @@ Reads go through the `v_products`, `v_installations` and `v_locations` views.
 Writes go through `rpc_register_product`, `rpc_install_product`, `rpc_takedown`,
 `rpc_import_locations` and `rpc_set_product_status`, each of which re-checks the
 caller's role and site before touching anything.
+
+## 3a. Only our own labels are accepted
+
+A phone camera reads any QR or barcode it is pointed at — a poster, a packet of
+gloves, a delivery note. Anything whose code does not begin with **`RZCIR`** is
+rejected before it can touch a product record, and the user sees
+`<code> is not a valid product label`.
+
+This is enforced in the database only, and is deliberately **not mentioned
+anywhere in the interface**:
+
+| Where | What it does |
+|---|---|
+| `public.is_house_code(text)` | The single rule — code must start with `RZCIR`, case-insensitive |
+| `rpc_register_product` | Rejects before creating a product |
+| `rpc_install_product` | Rejects before fitting |
+| `rpc_takedown` | Rejects every scanned code before removing anything |
+| `products_house_code` CHECK constraint | Backstop — blocks any direct insert or update, whatever route it arrives by |
+
+Verified against real EAN-13 barcodes, URLs, plain text and the old code format;
+all four paths reject them, including a direct API write that bypasses the RPCs.
+
+To widen or change the accepted prefix later, edit `is_house_code` — every
+enforcement point reads from it.
+
+> Note on spelling: the request said "RZCIRC". The generator produces
+> `RZCIR-CURT-…`, so the rule matches the fixed **`RZCIR`** prefix you originally
+> specified — which accepts both spellings. A literal six-character `RZCIRC`
+> match would have rejected every code the system mints.
+
+**Demo data was migrated to suit this.** The 560 demonstration products were on
+the old `SYN-100023` format and would have become unusable, so they were renamed
+to `RZCIR-CURT-100023` (same trailing digits, history intact). One foreign
+barcode, `525819075`, had been registered during testing; it had no history and
+was removed.
 
 ## 4. Security
 

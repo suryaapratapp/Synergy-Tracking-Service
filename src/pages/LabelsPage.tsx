@@ -247,12 +247,12 @@ export default function LabelsPage() {
           <QrLabel code={sampleCode(productType)} svg={sampleSvg} />
           <div className="label-preview-note">
             <p>
-              Codes look like <code>{prefix}XXXXXX</code> — a fixed <strong>RZCIR</strong> prefix, the
-              first four letters of the product, then six digits.
+              Codes look like <code>{prefix}AAAA0001</code> — a fixed <strong>RZCIR</strong> prefix,
+              the first four letters of the product, then four letters and four digits.
             </p>
             <p className="muted">
-              Every code is reserved as it is generated, so a number is never printed twice while a
-              product still holds it.
+              Codes are issued in ascending serial order and reserved as they are generated. A number
+              is never issued twice, whatever happens to the product afterwards.
             </p>
           </div>
         </div>

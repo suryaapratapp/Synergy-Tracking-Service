@@ -123,11 +123,11 @@ export default function InstallPage() {
               min={1}
               max={365}
               inputMode="numeric"
-              placeholder="14 (default)"
+              placeholder="180 (default)"
               value={dueDays}
               onChange={(e) => setDueDays(e.target.value === '' ? '' : Number(e.target.value))}
             />
-            <p className="field-hint">Leave blank to use the standard 2-week window.</p>
+            <p className="field-hint">Leave blank to use the standard change-due window.</p>
           </div>
         )}
       </Card>

@@ -67,8 +67,9 @@ export default function InventoryPage() {
           query = query.eq('status', 'in_use').lt('due_date', today)
           break
         case 'due': {
-          const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
-          query = query.eq('status', 'in_use').gte('due_date', today).lte('due_date', in7)
+          // Matches the dashboard's "Due in 30 days" tile.
+          const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
+          query = query.eq('status', 'in_use').gte('due_date', today).lte('due_date', soon)
           break
         }
         case 'registered':

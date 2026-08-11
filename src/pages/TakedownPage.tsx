@@ -17,7 +17,7 @@ export default function TakedownPage() {
   const { reload } = useData()
   const toast = useToast()
 
-  const [mode, setMode] = useState<'location' | 'scan'>('location')
+  const [mode, setMode] = useState<'location' | 'scan'>('scan')
   const [location, setLocation] = useState<LocationSelection>(EMPTY_LOCATION)
   const [rows, setRows] = useState<InstallationView[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())

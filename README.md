@@ -65,10 +65,15 @@ directly.
 ## QR labels
 
 Admins generate label codes under **QR labels** in the fixed format
-`RZCIR-<first four letters of the product>-<6 digits>` — e.g. `RZCIR-CURT-048213`.
-Up to 500 per click; download the CSV for a label printer, or print a sheet of
-28 × 34 mm labels with the code in small type under each QR. Codes are reserved as
-they are generated, so a number is never printed twice while a product holds it.
+`RZCIR-<first four letters of the product>-AAAAXXXX` — e.g. `RZCIR-CURT-AAAA0001`,
+four letters then four digits. Up to 500 per click; download the CSV for a label
+printer, or print a sheet of 28 × 34 mm labels with the code in small type under
+each QR.
+
+Codes are issued in **ascending serial order** and are **never reused** — the
+counter is held separately from the products table, so deleting a product (or
+wiping the demo data) does not free its number. Each product line has its own
+series, and 4.5 billion codes per line.
 
 ## How scanning works
 

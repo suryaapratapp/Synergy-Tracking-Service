@@ -95,9 +95,9 @@ export default function DashboardPage() {
           onClick={() => navigate('/inventory?filter=overdue')}
         />
         <StatTile
-          label="Due in 7 days"
-          value={t.due_7}
-          tone={t.due_7 > 0 ? 'warning' : 'neutral'}
+          label="Due in 30 days"
+          value={t.due_30}
+          tone={t.due_30 > 0 ? 'warning' : 'neutral'}
           hint="Plan the next round"
           onClick={() => navigate('/inventory?filter=due')}
         />
@@ -208,7 +208,7 @@ export default function DashboardPage() {
           Needs attention
         </SectionTitle>
         {data.due_soon.length === 0 ? (
-          <EmptyState title="Nothing due in the next 14 days" hint="Every product is inside its change window." />
+          <EmptyState title="Nothing due in the next 30 days" hint="Every product is inside its change window." />
         ) : (
           <ul className="due-list">
             {data.due_soon.slice(0, 8).map((d) => (
