@@ -21,7 +21,9 @@ npm install
 npm run dev
 ```
 
-The app expects a `.env` file (already present for the live project):
+Configuration is optional — the app ships with working defaults. To point it at
+a different Supabase project, set these as environment variables on the host (or
+in a local `.env`, which is git-ignored):
 
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co

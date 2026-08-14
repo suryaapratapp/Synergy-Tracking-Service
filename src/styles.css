@@ -902,6 +902,25 @@ button.stat:hover { background: var(--raised); }
   font-size: 0.86rem; color: var(--ink-3);
 }
 
+/* ======================================================= startup error */
+
+.startup-error {
+  max-width: 460px; margin: 12vh auto; padding: 26px 22px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 10px; text-align: center;
+}
+.startup-error h1 { font-size: 1.2rem; }
+.startup-error p { font-size: 0.9rem; color: var(--ink-2); }
+.startup-error-detail {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem !important; color: #a51f1f !important;
+  background: #fef2f2; border: 1px solid #fecaca;
+  border-radius: var(--radius-sm); padding: 10px 12px;
+  word-break: break-word; text-align: left;
+}
+.startup-error-hint { color: var(--ink-3) !important; font-size: 0.82rem !important; }
+
 /* =============================================================== login */
 
 .login {
