@@ -78,8 +78,8 @@ change takes effect immediately — they sign in with the new name straight away
 ## 2. What the app does
 
 **QR labels** (admin only) — generates label codes in the fixed format
-`RZCIR-<first four letters of the product>-AAAAXXXX`, e.g. `RZCIR-CURT-AAAA0001`
-— four letters then four digits. Choose the product and a quantity (up to 500 per
+`RZCIR-<product code>-AAAAXXXX`, e.g. `RZCIR-MVN191-AAAA0001` — a product code
+(MVN191 for the current curtain line) then four letters and four digits. Choose the product and a quantity (up to 500 per
 click), press generate, then download the CSV for the label printer or print a
 ready-made sheet of 28 × 34 mm labels. Each label carries the QR with the code
 printed underneath, so a damaged label can still be typed in. A preview of the
@@ -96,9 +96,21 @@ again. Blocks are reserved atomically, so two admins generating at once can neve
 be handed the same serial. Verified by deleting freshly issued codes and
 confirming the next run skipped past them.
 
-**Register** (Synergy only) — labels are applied at the Synergy site and each
-product is scanned onto the system. Batch, size and colour are set once per run
-and applied to every scan. A paste-a-list mode covers bulk labelling.
+**Stock is held as boxes.** Synergy packs already-labelled product into a box,
+invoices it to a hospital and ships it; the items inside are scanned and
+installed on arrival. So the **In stock** tab counts boxes, not loose items, and
+shows them grouped by *In stock → Dispatched → Delivered* with quantity, invoice
+reference and destination.
+
+> This section is placeholder data (`public.stock_boxes`). `box_code` is where
+> Synergy's own inventory barcode will land when the two systems are connected —
+> nothing else in the app depends on it, so swapping the source is contained.
+
+> **Open question:** the **Register labels** screen still exists and describes
+> scanning each item onto the system at the Synergy site — a step that no longer
+> happens now that the label generator creates the product records. It is
+> harmless (useful for onboarding stock labelled elsewhere) but it contradicts
+> the workflow above. Say the word and I will remove it.
 
 **Install** — the fitter picks Hospital → Floor → Ward → Bay once, then scans each
 product into that bay. Date and installer are recorded automatically and the
@@ -123,11 +135,13 @@ Reports.
 | Table | Purpose |
 |---|---|
 | `hospitals`, `wards`, `bays` | The location list (`wards.floor` carries the floor) |
-| `products` | One row per labelled item; `qr_code` is unique, `product_type` keeps the model open for future product lines |
+| `products` | One row per labelled item; `qr_code` is unique, `product_code` (MVN191) and `product_type` keep the model open for future product lines |
 | `installations` | One row per install→take-down cycle, with reason and notes |
 | `product_events` | Append-only audit trail of everything that happened |
+| `stock_boxes` | Boxed stock awaiting dispatch, in transit, or delivered — placeholder until Synergy's inventory system is connected |
+| `code_counters` | The label serial per product line; never rewinds, which is what makes codes unrepeatable |
 | `profiles` | Role and hospital scope, linked to the auth user |
-| `app_settings` | `default_change_due_days` (14) and `product_line` |
+| `app_settings` | `default_change_due_days` (180) and `product_line` |
 
 A partial unique index guarantees a product can only have one live installation
 at a time, so double-installs are impossible rather than merely discouraged.
@@ -162,15 +176,14 @@ To widen or change the accepted prefix later, edit `is_house_code` — every
 enforcement point reads from it.
 
 > Note on spelling: the request said "RZCIRC". The generator produces
-> `RZCIR-CURT-…`, so the rule matches the fixed **`RZCIR`** prefix you originally
+> `RZCIR-MVN191-…`, so the rule matches the fixed **`RZCIR`** prefix originally
 > specified — which accepts both spellings. A literal six-character `RZCIRC`
 > match would have rejected every code the system mints.
 
-**Demo data was migrated to suit this.** The 560 demonstration products were on
-the old `SYN-100023` format and would have become unusable, so they were renamed
-to `RZCIR-CURT-100023` (same trailing digits, history intact). One foreign
-barcode, `525819075`, had been registered during testing; it had no history and
-was removed.
+**Existing labels are migrated whenever the format changes**, so nothing in the
+field is orphaned: `SYN-100023` → `RZCIR-CURT-100023` → serial format →
+`RZCIR-MVN191-AAAA0001`. Each migration keeps history intact and carries the
+serial counter across so numbering continues rather than restarting.
 
 ## 4. Security
 

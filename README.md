@@ -72,8 +72,8 @@ re-checked before the change is accepted.
 ## QR labels
 
 Admins generate label codes under **QR labels** in the fixed format
-`RZCIR-<first four letters of the product>-AAAAXXXX` — e.g. `RZCIR-CURT-AAAA0001`,
-four letters then four digits. Up to 500 per click; download the CSV for a label
+`RZCIR-<product code>-AAAAXXXX` — e.g. `RZCIR-MVN191-AAAA0001`, a product
+code then four letters and four digits. Up to 500 per click; download the CSV for a label
 printer, or print a sheet of 28 × 34 mm labels with the code in small type under
 each QR.
 

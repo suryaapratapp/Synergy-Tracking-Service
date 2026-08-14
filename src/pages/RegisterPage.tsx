@@ -156,7 +156,7 @@ export default function RegisterPage() {
                 rows={6}
                 value={bulk}
                 onChange={(e) => setBulk(e.target.value)}
-                placeholder={'RZCIR-CURT-AAAA0001\nRZCIR-CURT-AAAA0002\nRZCIR-CURT-AAAA0003'}
+                placeholder={'RZCIR-MVN191-AAAA0001\nRZCIR-MVN191-AAAA0002\nRZCIR-MVN191-AAAA0003'}
                 spellCheck={false}
               />
             </Field>

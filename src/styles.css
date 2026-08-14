@@ -755,6 +755,42 @@ button.stat:hover { background: var(--raised); }
   display: flex; flex-direction: column; gap: 8px;
 }
 
+/* ========================================================= stock boxes */
+
+.box-group-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 14px 16px 10px; border-bottom: 1px solid var(--border);
+}
+.box-group-head h2 { font-size: 0.95rem; }
+.box-group-head span { font-size: 0.8rem; }
+
+.box-list { display: flex; flex-direction: column; }
+.box-list li + li { border-top: 1px solid var(--border); }
+.box-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; padding: 13px 16px;
+}
+.box-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.box-code { font-weight: 650; font-variant-numeric: tabular-nums; }
+.box-meta { font-size: 0.8rem; color: var(--ink-3); }
+.box-note { font-size: 0.78rem; color: var(--ink-3); font-style: italic; }
+.box-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.box-qty { font-weight: 700; font-size: 1.05rem; display: flex; align-items: baseline; gap: 4px; }
+.box-qty small { font-size: 0.68rem; font-weight: 500; color: var(--ink-3); }
+.box-date { font-size: 0.72rem; color: var(--ink-3); white-space: nowrap; }
+
+.badge-box-in_stock   { background: #e6f7f0; color: #0b6b4a; border-color: #bfe9d8; }
+.badge-box-dispatched { background: #e3f2fd; color: #14539e; border-color: #bcdcf8; }
+.badge-box-delivered  { background: #eef1f2; color: #4b5563; border-color: #dde3e4; }
+
+.notice {
+  font-size: 0.84rem; line-height: 1.5;
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.notice-info {
+  background: #f5f9fe; border: 1px solid #cfe2fa; color: #14539e;
+}
+
 /* ============================================================ qr labels */
 
 .qr-label {
@@ -946,6 +982,7 @@ button.stat:hover { background: var(--raised); }
 
 @media (min-width: 640px) {
   .stat-grid { grid-template-columns: repeat(4, 1fr); }
+  .stat-grid-6 { grid-template-columns: repeat(3, 1fr); }
   .form-grid, .filter-grid { grid-template-columns: repeat(2, 1fr); }
   .location-picker { grid-template-columns: repeat(2, 1fr); }
   .page { padding: 20px; }
@@ -971,6 +1008,10 @@ button.stat:hover { background: var(--raised); }
   .quick-actions { max-width: 520px; }
   .sheet-backdrop { align-items: center; }
   .sheet { border-radius: 18px; max-height: 82dvh; }
+}
+
+@media (min-width: 1024px) {
+  .stat-grid-6 { grid-template-columns: repeat(6, 1fr); }
 }
 
 @media (min-width: 1200px) {

@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase, friendlyError } from '../lib/supabase'
 import { Card, EmptyState, Field, SectionTitle, Spinner, useToast } from '../components/ui'
 import QrLabel from '../components/QrLabel'
-import { codePrefixFor, qrSvg, qrSvgMany, responsiveSvg, sampleCode } from '../lib/qr'
+import {
+  DEFAULT_PRODUCT_CODE,
+  codePrefixFor,
+  normaliseProductCode,
+  qrSvg,
+  qrSvgMany,
+  responsiveSvg,
+  sampleCode,
+} from '../lib/qr'
 import { downloadCsv, toCsv } from '../lib/csv'
 import { formatDate } from '../lib/format'
 import type { ProductView } from '../lib/types'
@@ -17,6 +25,7 @@ const QUANTITIES = [10, 50, 100, 250, 500]
 export default function LabelsPage() {
   const toast = useToast()
 
+  const [productCode, setProductCode] = useState(DEFAULT_PRODUCT_CODE)
   const [productType, setProductType] = useState('Curtain')
   const [count, setCount] = useState(500)
   const [batch, setBatch] = useState('')
@@ -30,18 +39,18 @@ export default function LabelsPage() {
   const [printing, setPrinting] = useState(false)
   const [recent, setRecent] = useState<{ batch: string | null; n: number; at: string }[]>([])
 
-  const prefix = useMemo(() => codePrefixFor(productType), [productType])
+  const prefix = useMemo(() => codePrefixFor(productCode), [productCode])
 
-  // Keep the format preview in step with whatever product type is typed.
+  // Keep the format preview in step with whatever product code is typed.
   useEffect(() => {
     let cancelled = false
-    void qrSvg(sampleCode(productType)).then((s) => {
+    void qrSvg(sampleCode(productCode)).then((s) => {
       if (!cancelled) setSampleSvg(responsiveSvg(s))
     })
     return () => {
       cancelled = true
     }
-  }, [productType])
+  }, [productCode])
 
   const loadRecent = useCallback(async () => {
     const { data } = await supabase
@@ -70,6 +79,7 @@ export default function LabelsPage() {
     setSvgs(new Map())
 
     const { data, error } = await supabase.rpc('rpc_generate_product_codes', {
+      p_product_code: normaliseProductCode(productCode) || DEFAULT_PRODUCT_CODE,
       p_product_type: productType.trim() || 'Curtain',
       p_count: count,
       p_batch: batch.trim() || null,
@@ -93,8 +103,16 @@ export default function LabelsPage() {
 
   const exportCsv = () => {
     const csv = toCsv(
-      ['Code', 'Product', 'Batch', 'Size', 'Colour', 'Generated'],
-      generated.map((p) => [p.qr_code, p.product_type, p.batch, p.size, p.colour, formatDate(p.registered_at)]),
+      ['Code', 'Product code', 'Product', 'Batch', 'Size', 'Colour', 'Generated'],
+      generated.map((p) => [
+        p.qr_code,
+        p.product_code,
+        p.product_type,
+        p.batch,
+        p.size,
+        p.colour,
+        formatDate(p.registered_at),
+      ]),
     )
     downloadCsv(`labels-${prefix.replace(/-$/, '')}-${new Date().toISOString().slice(0, 10)}.csv`, csv)
     toast('success', `${generated.length} codes exported`)
@@ -161,10 +179,25 @@ export default function LabelsPage() {
 
         <div className="form-grid">
           <Field
-            label="Product"
-            htmlFor="lbl-type"
-            hint="The first four letters become the middle block of the code."
+            label="Product code"
+            htmlFor="lbl-code"
+            hint="The middle block of the code. Letters and digits only."
           >
+            <input
+              id="lbl-code"
+              className="input"
+              value={productCode}
+              onChange={(e) => setProductCode(e.target.value.toUpperCase())}
+              placeholder={DEFAULT_PRODUCT_CODE}
+              maxLength={10}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </Field>
+
+          <Field label="Product name" htmlFor="lbl-type" hint="For reporting; not part of the code.">
             <input
               id="lbl-type"
               className="input"
@@ -244,11 +277,11 @@ export default function LabelsPage() {
           <span className="step-num">2</span> Check the format
         </SectionTitle>
         <div className="label-preview">
-          <QrLabel code={sampleCode(productType)} svg={sampleSvg} />
+          <QrLabel code={sampleCode(productCode)} svg={sampleSvg} />
           <div className="label-preview-note">
             <p>
               Codes look like <code>{prefix}AAAA0001</code> — a fixed <strong>RZCIR</strong> prefix,
-              the first four letters of the product, then four letters and four digits.
+              the product code, then four letters and four digits.
             </p>
             <p className="muted">
               Codes are issued in ascending serial order and reserved as they are generated. A number
@@ -261,7 +294,7 @@ export default function LabelsPage() {
           type="button"
           className="btn btn-primary btn-lg btn-block"
           onClick={() => void generate()}
-          disabled={busy}
+          disabled={busy || normaliseProductCode(productCode).length < 2}
         >
           {busy ? 'Generating…' : `Generate ${count} label${count === 1 ? '' : 's'}`}
         </button>

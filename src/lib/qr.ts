@@ -1,22 +1,28 @@
 import QRCode from 'qrcode'
 
 /**
- * Label codes are `RZCIR-<first four letters of the product>-AAAAXXXX`,
- * e.g. RZCIR-CURT-AAAA0001 — four letters then four digits, issued in
+ * Label codes are `RZCIR-<product code>-AAAAXXXX`, e.g.
+ * `RZCIR-MVN191-AAAA0001` — four letters then four digits, issued in
  * ascending serial order. The database mints and reserves them; these
  * helpers only mirror the format for previews.
  */
 export const CODE_PREFIX = 'RZCIR'
+/** The product code for the curtain line currently in service. */
+export const DEFAULT_PRODUCT_CODE = 'MVN191'
 /** Shape of the serial block, shown in previews. */
 export const SERIAL_SAMPLE = 'AAAA0001'
 
-export function codePrefixFor(productType: string): string {
-  const letters = (productType || 'Product').replace(/[^a-zA-Z]/g, '').slice(0, 4)
-  return `${CODE_PREFIX}-${letters.padEnd(4, 'X').toUpperCase()}-`
+/** Uppercase, letters and digits only — matches what the database accepts. */
+export function normaliseProductCode(code: string): string {
+  return (code || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
 }
 
-export function sampleCode(productType: string): string {
-  return `${codePrefixFor(productType)}${SERIAL_SAMPLE}`
+export function codePrefixFor(productCode: string): string {
+  return `${CODE_PREFIX}-${normaliseProductCode(productCode) || DEFAULT_PRODUCT_CODE}-`
+}
+
+export function sampleCode(productCode: string): string {
+  return `${codePrefixFor(productCode)}${SERIAL_SAMPLE}`
 }
 
 /** Renders a code as a standalone SVG string, sized by the caller's CSS. */

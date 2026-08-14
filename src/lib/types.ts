@@ -51,6 +51,7 @@ export interface LocationRow {
 export interface ProductView {
   id: string
   qr_code: string
+  product_code: string
   product_type: string
   size: string | null
   colour: string | null
@@ -162,6 +163,48 @@ export const REMOVAL_REASONS: { value: RemovalReason; label: string; help: strin
   { value: 'soiled', label: 'Soiled', help: 'Removed early due to soiling / contamination' },
   { value: 'damage', label: 'Damage', help: 'Removed early due to damage' },
 ]
+
+/**
+ * Stock is held as boxes, not loose items: Synergy packs labelled product into
+ * a box, invoices it to a hospital and ships it, and the items are scanned and
+ * installed on arrival.
+ */
+export type BoxStatus = 'in_stock' | 'dispatched' | 'delivered'
+
+export interface StockBox {
+  id: string
+  box_code: string
+  product_code: string
+  product_type: string
+  quantity: number
+  hospital_id: string | null
+  hospital_name: string | null
+  invoice_ref: string | null
+  status: BoxStatus
+  packed_at: string
+  dispatched_at: string | null
+  delivered_at: string | null
+  notes: string | null
+}
+
+export const BOX_STATUS_LABELS: Record<BoxStatus, string> = {
+  in_stock: 'In stock',
+  dispatched: 'Dispatched',
+  delivered: 'Delivered',
+}
+
+export interface ProductCounts {
+  all: number
+  in_use: number
+  overdue: number
+  due: number
+  removed: number
+  retired: number
+  boxes_in_stock: number
+  boxes_dispatched: number
+  boxes_delivered: number
+  items_in_stock: number
+}
 
 export const STATUS_LABELS: Record<ItemStatus, string> = {
   registered: 'In stock',
