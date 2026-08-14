@@ -14,7 +14,7 @@ before the system carries real data.**
 |---|---|---|
 | Admin | `admin` | `Admin@2026!` |
 | Synergy | `synergy` | `Synergy@2026!` |
-| Synergy field | `fitter` | `Fitter@2026!` |
+| Synergy field | `synergy2` | `Fitter@2026!` |
 | Hospital (Queen Mary) | `queenmary` | `Hospital@2026!` |
 | Hospital (St Thomas) | `stthomas` | `Hospital@2026!` |
 
@@ -52,6 +52,16 @@ To add a hospital as Synergy onboards it: **Users & settings → Add user**, cho
 a username, role *Hospital* and the site. Account creation runs through a Supabase
 edge function that checks the caller is an admin before using the service key, so
 the privileged key never reaches the browser.
+
+**Renaming a user:** do it in **Users & settings → tap the user → Username**. The
+change takes effect immediately — they sign in with the new name straight away.
+
+> Do not rename by editing `profiles.username` in the Supabase table editor and
+> nothing else. A username exists in two places — `profiles.username` (what staff
+> type) and `auth.users.email` (what Auth is keyed on) — and editing one alone
+> used to lock the account out. A trigger, `profiles_sync_username`, now carries
+> any change through to the auth record automatically, so a direct SQL rename is
+> safe too; it also rejects duplicates and malformed usernames.
 
 ## 2. What the app does
 

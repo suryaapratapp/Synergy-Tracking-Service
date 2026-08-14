@@ -144,10 +144,38 @@ export default function AdminPage() {
         {editing && (
           <>
             <p className="sheet-lead">
-              <strong>@{editing.username}</strong>
-              <br />
               <span className="muted">Added {formatDate(editing.created_at)}</span>
             </p>
+
+            <Field
+              label="Username"
+              htmlFor="edit-username"
+              hint="What they type to sign in. Changing it takes effect immediately."
+            >
+              <input
+                id="edit-username"
+                className="input"
+                value={editing.username ?? ''}
+                onChange={(e) => setEditing({ ...editing, username: e.target.value.toLowerCase() })}
+                minLength={3}
+                maxLength={32}
+                pattern="[a-z0-9][a-z0-9._\-]{2,31}"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </Field>
+
+            <Field label="Display name" htmlFor="edit-fullname">
+              <input
+                id="edit-fullname"
+                className="input"
+                value={editing.full_name ?? ''}
+                onChange={(e) => setEditing({ ...editing, full_name: e.target.value })}
+                autoComplete="off"
+              />
+            </Field>
 
             <Field label="Role" htmlFor="edit-role" hint={ROLE_HELP[editing.role]}>
               <select
@@ -194,9 +222,14 @@ export default function AdminPage() {
             <button
               type="button"
               className="btn btn-primary btn-block"
-              disabled={editing.role === 'hospital' && !editing.hospital_id}
+              disabled={
+                (editing.role === 'hospital' && !editing.hospital_id) ||
+                !/^[a-z0-9][a-z0-9._-]{2,31}$/.test(editing.username ?? '')
+              }
               onClick={() =>
                 void updateUser(editing.id, {
+                  username: editing.username,
+                  full_name: editing.full_name?.trim() || editing.username,
                   role: editing.role,
                   hospital_id: editing.role === 'hospital' ? editing.hospital_id : null,
                   active: editing.active,

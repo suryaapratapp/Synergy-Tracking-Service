@@ -60,7 +60,8 @@ export function friendlyError(err: unknown): string {
   if (/failed to fetch|network|load failed/i.test(msg)) {
     return 'No connection. Check your signal and try again.'
   }
-  if (e.code === '23505' && /already registered/i.test(msg)) return msg
+  if (/profiles_username_key/.test(msg)) return 'That username is already taken.'
+  if (e.code === '23505' && /already registered|already taken/i.test(msg)) return msg
   if (e.code === '42501') return msg || 'You do not have permission to do that.'
   if (e.code === 'P0002') return msg
   if (/invalid login credentials/i.test(msg)) return 'Wrong username or password.'
