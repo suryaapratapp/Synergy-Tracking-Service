@@ -15,6 +15,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'))
 const LocationsPage = lazy(() => import('./pages/LocationsPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const LabelsPage = lazy(() => import('./pages/LabelsPage'))
+const AccountPage = lazy(() => import('./pages/AccountPage'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { session, profile, loading } = useAuth()
@@ -72,6 +73,7 @@ export default function App() {
                   <Route path="/takedown" element={<TakedownPage />} />
                   <Route path="/inventory" element={<InventoryPage />} />
                   <Route path="/inventory/:id" element={<ProductDetailPage />} />
+                  <Route path="/account" element={<AccountPage />} />
                   <Route
                     path="/reports"
                     element={

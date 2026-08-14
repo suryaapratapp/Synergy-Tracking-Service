@@ -1,22 +1,21 @@
-# Handover — Synergy Tracking Service
+# Handover — Tex-Trak
 
-Developed by RZ Circular Ltd.
-Backend: Supabase project `dnesiqubviwvuavyestr` (region eu-west-2).
+Developed by CIRCAI Ltd.
+
+> **This file is committed to the repository. Never put passwords, API keys or
+> the Supabase project reference in it.** Credentials live in
+> `CREDENTIALS.local.md`, which is git-ignored, and in the deployment host's
+> environment variables.
 
 ---
 
 ## 1. Logins
 
-Staff sign in with a **username** — no email address. **Change these passwords
-before the system carries real data.**
+Staff sign in with a **username** — no email address.
 
-| Role | Username | Password |
-|---|---|---|
-| Admin | `admin` | `Admin@2026!` |
-| Synergy | `synergy` | `Synergy@2026!` |
-| Synergy field | `synergy2` | `Fitter@2026!` |
-| Hospital (Queen Mary) | `queenmary` | `Hospital@2026!` |
-| Hospital (St Thomas) | `stthomas` | `Hospital@2026!` |
+Usernames are `admin`, `synergy`, `synergy2`, and one per hospital. **Passwords
+are not recorded here** — see `CREDENTIALS.local.md` on the delivery machine, or
+ask the administrator.
 
 ### The four roles
 
@@ -53,8 +52,21 @@ a username, role *Hospital* and the site. Account creation runs through a Supaba
 edge function that checks the caller is an admin before using the service key, so
 the privileged key never reaches the browser.
 
+**Changing your own password:** every user has **My account** in the navigation —
+current password, new password, repeat, each with a *Show* toggle. The current
+password is re-checked before the change is allowed, so an unattended phone is
+not enough to take over an account. Changing it does not sign you out on the
+device you are using.
+
 **Renaming a user:** do it in **Users & settings → tap the user → Username**. The
 change takes effect immediately — they sign in with the new name straight away.
+
+> **Gap worth closing before go-live:** there is no password *reset*. Usernames
+> are not real email addresses, so the "forgot password" route does not exist —
+> if someone forgets their password, an admin cannot currently reset it from the
+> app, and it takes a database change to recover the account. Adding an admin
+> reset button is a small extension of the existing `admin-create-user` edge
+> function; say the word and I will add it.
 
 > Do not rename by editing `profiles.username` in the Supabase table editor and
 > nothing else. A username exists in two places — `profiles.username` (what staff

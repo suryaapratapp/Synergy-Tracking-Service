@@ -31,6 +31,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     ...(canViewReports ? [{ to: '/reports', label: 'Reports', icon: <IconChart /> }] : []),
     ...(isGlobal ? [{ to: '/locations', label: 'Locations', icon: <IconPin /> }] : []),
     ...(isAdmin ? [{ to: '/admin', label: 'Users & settings', icon: <IconCog /> }] : []),
+    { to: '/account', label: 'My account', icon: <IconUser /> },
   ]
 
   const roleLabel = profile ? ROLE_LABELS[profile.role] : 'Hospital'
@@ -100,6 +101,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
             Signed in as <strong>{profile?.username}</strong>
           </p>
           <p className="muted">{roleLabel} access</p>
+          <NavLink to="/account" className="link" onClick={() => setMoreOpen(false)}>
+            Change my password
+          </NavLink>
         </div>
         <button
           type="button"
@@ -183,6 +187,14 @@ function IconPin() {
     <svg viewBox="0 0 24 24" width="22" height="22" {...s}>
       <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z" />
       <circle cx="12" cy="10" r="2.6" />
+    </svg>
+  )
+}
+function IconUser() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" {...s}>
+      <circle cx="12" cy="8" r="3.6" />
+      <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
     </svg>
   )
 }

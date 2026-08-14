@@ -1,7 +1,7 @@
 /** Product name in one place, so it is easy to rebrand later. */
-export const APP_NAME = 'RZ Product Tracker'
+export const APP_NAME = 'Tex-Trak'
 export const APP_TAGLINE = 'Product lifecycle tracking for healthcare environments'
-export const DEVELOPER = 'Developed by RZ Circular Ltd'
+export const DEVELOPER = 'Developed by CIRCAI Ltd'
 
 /**
  * Supabase Auth is keyed on email, but staff sign in with a username.

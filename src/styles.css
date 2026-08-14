@@ -1,5 +1,5 @@
 /* =====================================================================
-   Product Tracker
+   Tex-Trak
    Mobile-first. Built for gloved hands on a phone in a hospital corridor:
    large hit targets, high contrast, no hover-only affordances.
    ===================================================================== */
@@ -310,8 +310,20 @@ select.input {
 .inline-form { display: flex; gap: 10px; align-items: flex-end; }
 .inline-form .input { max-width: 140px; }
 
-.password-row { display: flex; gap: 8px; align-items: center; }
-.password-toggle { flex: none; }
+/* Password field with the reveal control sitting inside it. */
+.password-field { position: relative; display: flex; }
+.password-field .input { padding-right: 76px; }
+.password-reveal {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  min-height: 38px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: var(--raised); color: var(--ink-2);
+  font-size: 0.84rem; font-weight: 600; cursor: pointer;
+}
+.password-reveal:hover:not(:disabled) { background: #eef1f1; color: var(--ink); }
+.password-reveal:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.password-form { display: flex; flex-direction: column; gap: 14px; }
+.field-hint.mismatch { color: #a51f1f; font-weight: 600; }
 
 .form-error {
   background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;

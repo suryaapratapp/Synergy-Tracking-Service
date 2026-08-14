@@ -6,6 +6,7 @@ import { useData } from '../context/DataContext'
 import type { DashboardData } from '../lib/types'
 import { REMOVAL_REASONS } from '../lib/types'
 import { dueLabel, formatDate, relativeTime } from '../lib/format'
+import { DEVELOPER } from '../lib/branding'
 import { BarChart, DonutChart, LineChart, StatTile } from '../components/Charts'
 import { Card, EmptyState, SectionTitle, Spinner } from '../components/ui'
 
@@ -249,7 +250,7 @@ export default function DashboardPage() {
         )}
       </Card>
 
-      <p className="credit">Developed by RZ Circular Ltd</p>
+      <p className="credit">{DEVELOPER}</p>
     </div>
   )
 }

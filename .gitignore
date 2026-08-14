@@ -1,9 +1,16 @@
 node_modules
 dist
 dist-ssr
+
+# Never commit real credentials. Configuration comes from the host's
+# environment variables in production; .env.example documents the shape.
+.env
 .env.local
 .env.*.local
 *.local
+
+# Credentials handed to the client are kept out of the repository.
+CREDENTIALS.local.md
 .DS_Store
 .vite
 *.log

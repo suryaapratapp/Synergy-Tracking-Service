@@ -1,9 +1,9 @@
 {
-  "name": "synergy-tracking-service",
+  "name": "tex-trak",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Product lifecycle tracking for healthcare environments. Developed by RZ Circular Ltd.",
+  "description": "Tex-Trak — product lifecycle tracking for healthcare environments. Developed by CIRCAI Ltd.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

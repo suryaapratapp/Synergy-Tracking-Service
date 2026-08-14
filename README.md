@@ -1,4 +1,4 @@
-# Product Tracker
+# Tex-Trak
 
 Product lifecycle tracking for healthcare environments — label, install, monitor
 and retire products across hospital sites from a phone.
@@ -7,7 +7,7 @@ Built mobile-first as an installable web app (PWA): it runs in any modern browse
 works with hardware barcode scanners, falls back to the phone camera, and always
 allows typing a code by hand.
 
-**Developed by RZ Circular Ltd.**
+**Developed by CIRCAI Ltd.**
 
 ---
 
@@ -62,6 +62,10 @@ email address.
 Scoping is enforced in the database (row level security), not just the interface:
 a hospital login cannot read another hospital's data even by calling the API
 directly.
+
+Every user can change their own password under **My account** — current password,
+new password and repeat, each with a *Show* toggle. The current password is
+re-checked before the change is accepted.
 
 ## QR labels
 

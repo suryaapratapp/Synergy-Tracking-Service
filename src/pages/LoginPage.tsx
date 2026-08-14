@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { APP_NAME, APP_TAGLINE, DEVELOPER } from '../lib/branding'
+import PasswordInput from '../components/PasswordInput'
 
 export default function LoginPage() {
   const { signIn } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -56,25 +56,13 @@ export default function LoginPage() {
             <label className="field-label" htmlFor="password">
               Password
             </label>
-            <div className="password-row">
-              <input
-                id="password"
-                className="input"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-                placeholder="••••••••"
-              />
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm password-toggle"
-                onClick={() => setShowPassword((v) => !v)}
-              >
-                {showPassword ? 'Hide' : 'Show'}
-              </button>
-            </div>
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+              required
+            />
           </div>
 
           {error && (

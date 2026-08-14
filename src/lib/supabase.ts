@@ -16,7 +16,7 @@ export const supabase = createClient(url, key, {
     detectSessionInUrl: false,
     storageKey: 'synergy-auth',
   },
-  global: { headers: { 'x-application-name': 'synergy-tracking-service' } },
+  global: { headers: { 'x-application-name': 'tex-trak' } },
 })
 
 /**

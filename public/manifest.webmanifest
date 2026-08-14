@@ -1,6 +1,6 @@
 {
-  "name": "RZ Product Tracker",
-  "short_name": "Tracker",
+  "name": "Tex-Trak",
+  "short_name": "Tex-Trak",
   "description": "Product lifecycle tracking for healthcare environments.",
   "start_url": "/",
   "scope": "/",
