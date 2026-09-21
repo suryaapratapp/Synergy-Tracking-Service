@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase, friendlyError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { Card, DueBadge, EmptyState, Sheet, Spinner, StatusBadge, SectionTitle, useToast } from '../components/ui'
 import { formatDate, formatDateTime } from '../lib/format'
+import { describeBay, installHereUrl } from '../lib/location'
 import { REMOVAL_REASONS, type InstallationView, type ProductView, type RemovalReason } from '../lib/types'
 
 export default function ProductDetailPage() {
@@ -22,6 +23,9 @@ export default function ProductDetailPage() {
   const [reason, setReason] = useState<RemovalReason>('expired')
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
+  const [justRemoved, setJustRemoved] = useState<{ installationId: string; bayId: string; where: string } | null>(
+    null,
+  )
 
   const load = useCallback(async () => {
     if (!id) return
@@ -54,6 +58,13 @@ export default function ProductDetailPage() {
     if (error) toast('error', friendlyError(error))
     else {
       toast('success', `${product.qr_code} taken down`)
+      if (product.bay_id) {
+        setJustRemoved({
+          installationId: product.installation_id,
+          bayId: product.bay_id,
+          where: describeBay(product),
+        })
+      }
       setSheet(null)
       setNotes('')
       void load()
@@ -110,6 +121,29 @@ export default function ProductDetailPage() {
           {product.status === 'in_use' && <DueBadge days={product.days_remaining} />}
         </div>
       </div>
+
+      {justRemoved && (
+        <Card className="next-card">
+          <div className="next-head">
+            <span className="next-icon" aria-hidden="true">
+              ↻
+            </span>
+            <div>
+              <h2>Hang a replacement?</h2>
+              <p className="next-sub">{justRemoved.where}</p>
+            </div>
+          </div>
+          <Link
+            className="btn btn-primary btn-block"
+            to={installHereUrl(justRemoved.bayId, justRemoved.installationId)}
+          >
+            Hang the replacement in this bay
+          </Link>
+          <button type="button" className="link-button" onClick={() => setJustRemoved(null)}>
+            Not replacing it
+          </button>
+        </Card>
+      )}
 
       {product.status === 'in_use' && (
         <Card className="card-highlight">
@@ -196,6 +230,9 @@ export default function ProductDetailPage() {
                     Installed {formatDateTime(h.installed_at)}
                     {h.installed_by_name && ` by ${h.installed_by_name}`}
                   </p>
+                  {h.replaces_qr_code && (
+                    <p className="timeline-meta timeline-swap">Hung as the replacement for {h.replaces_qr_code}</p>
+                  )}
                   {h.removed_at ? (
                     <p className="timeline-meta">
                       Taken down {formatDateTime(h.removed_at)}
@@ -207,6 +244,9 @@ export default function ProductDetailPage() {
                     <p className="timeline-meta">
                       Still in place · change due {formatDate(h.due_date)}
                     </p>
+                  )}
+                  {h.replaced_by_qr_code && (
+                    <p className="timeline-meta timeline-swap">Replaced by {h.replaced_by_qr_code}</p>
                   )}
                   <p className="timeline-meta muted">{h.days_in_service} days in service</p>
                 </div>

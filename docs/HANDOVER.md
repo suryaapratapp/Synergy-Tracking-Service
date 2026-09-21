@@ -123,6 +123,28 @@ default:
   chosen reason.
 - *By location*: pick the bay, tick what is coming down, choose a reason, confirm.
 
+**Swapping — take down and hang up in one motion.** The moment anything comes
+down, a *Hang the replacement* card appears on the same screen with the bay
+already known. Scan the new label and it goes up in that exact bay, recorded as
+the replacement for what came down. Several can come down first; they queue and
+are replaced in order.
+
+In *By scan* mode one scan field does both jobs, decided by the product itself:
+a label that is still hanging is taken down, a label that is not is hung as the
+replacement. With a hardware scanner or tap-free on, a swap is **scan old, scan
+new** with nothing to tap in between.
+
+It works the other way too. After an install, a card shows what is in that bay
+(and how many are overdue) with **Take down in this bay**, which opens Take down
+already set to that bay. Taking something down from a product's own page offers
+**Hang the replacement in this bay**, which opens Install locked to that bay.
+
+Every swap is linked in the data (`installations.replaces_installation_id`), so
+the history reads *"Replaced by RZCIR-…"* / *"Hung as the replacement for
+RZCIR-…"* and the activity feed says *"was installed, replacing RZCIR-…"*. The
+database refuses a replacement that is in a different bay, that is hung before
+the old one is down, or that replaces the same take-down twice.
+
 Reasons are **Expired** (default), **Soiled**, **Damage**.
 
 **Dashboard / Reports** — live counts, overdue and due-soon lists, fleet
@@ -147,8 +169,9 @@ A partial unique index guarantees a product can only have one live installation
 at a time, so double-installs are impossible rather than merely discouraged.
 
 Reads go through the `v_products`, `v_installations` and `v_locations` views.
-Writes go through `rpc_register_product`, `rpc_install_product`, `rpc_takedown`,
-`rpc_import_locations` and `rpc_set_product_status`, each of which re-checks the
+Writes go through `rpc_register_product`, `rpc_install_product`,
+`rpc_install_replacement`, `rpc_takedown`, `rpc_import_locations` and
+`rpc_set_product_status`, each of which re-checks the
 caller's role and site before touching anything.
 
 ## 3a. Only our own labels are accepted

@@ -755,6 +755,61 @@ button.stat:hover { background: var(--raised); }
   display: flex; flex-direction: column; gap: 8px;
 }
 
+/* ========================================================= next step --
+   The card that turns a take-down into a swap, or an install into a
+   take-down, without leaving the screen. Deliberately louder than the step
+   cards: it is the thing to do next. */
+
+.next-anchor { scroll-margin-top: 84px; }
+
+.next-card {
+  border: 2px solid var(--brand);
+  background: linear-gradient(180deg, var(--brand-wash) 0%, var(--surface) 70%);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.10), var(--shadow);
+  animation: rise .22s ease;
+}
+.next-head { display: flex; align-items: center; gap: 12px; }
+.next-head h2 { font-size: 1.05rem; }
+.next-icon {
+  display: grid; place-items: center; flex: none;
+  width: 42px; height: 42px; border-radius: 12px;
+  background: var(--brand); color: #fff; font-size: 1.2rem; font-weight: 700;
+}
+.next-icon.is-done { background: var(--status-good); }
+.next-sub { font-size: 0.82rem; color: var(--ink-3); margin-top: 1px; }
+.next-where {
+  font-size: 0.9rem; line-height: 1.6;
+  background: var(--surface); border: 1px solid var(--brand-tint);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.next-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.next-actions .btn { flex: 1 1 auto; }
+
+.swap-log {
+  border-top: 1px solid var(--border); padding-top: 10px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.swap-log-title { font-size: 0.8rem; font-weight: 650; color: var(--ink-2); }
+.swap-log ul { display: flex; flex-direction: column; gap: 6px; }
+.swap-log li {
+  display: grid; grid-template-columns: auto 1fr; gap: 0 10px;
+  font-size: 0.82rem; padding: 8px 10px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+}
+.swap-new { font-weight: 650; font-variant-numeric: tabular-nums; }
+.swap-old { color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.swap-where { grid-column: 1 / -1; color: var(--ink-3); font-size: 0.76rem; }
+
+.replacing-banner {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; font-size: 0.86rem; line-height: 1.5;
+  background: var(--brand-wash); border: 1px solid var(--brand-tint);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.replacing-banner p { flex: 1 1 220px; }
+
+.timeline-swap { color: var(--brand-dark) !important; font-weight: 600; }
+
 /* ========================================================= stock boxes */
 
 .box-group-head {

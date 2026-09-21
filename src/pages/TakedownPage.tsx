@@ -1,21 +1,43 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { supabase, friendlyError } from '../lib/supabase'
 import { useData } from '../context/DataContext'
 import { useHidScanner } from '../hooks/useHidScanner'
 import ScanField from '../components/ScanField'
 import LocationPicker, { EMPTY_LOCATION, type LocationSelection } from '../components/LocationPicker'
 import { Card, EmptyState, SectionTitle, Spinner, useToast } from '../components/ui'
-import { dueLabel, formatDate } from '../lib/format'
-import { REMOVAL_REASONS, type InstallationView, type RemovalReason } from '../lib/types'
+import { dueLabel, formatDate, normaliseCode } from '../lib/format'
+import { describeBay, installHereUrl, selectionForBay } from '../lib/location'
+import { REMOVAL_REASONS, type InstallationView, type ProductView, type RemovalReason } from '../lib/types'
+
+/** Something that has just come down and is waiting for its replacement. */
+interface Pending {
+  installationId: string
+  qrCode: string
+  bayId: string
+  where: string
+}
+
+/** A swap completed this session. */
+interface Swap {
+  newCode: string
+  oldCode: string
+  where: string
+}
 
 /**
  * Two ways down, because both happen in the field:
  *  - pick the bay and tick off what is being removed (the normal round), or
  *  - scan an individual product that is coming down out of cycle.
+ *
+ * Whatever comes down joins a replacement queue. The next scan hangs the new
+ * product in the same bay, so a swap is scan-old, scan-new with nothing to
+ * choose in between.
  */
 export default function TakedownPage() {
-  const { reload } = useData()
+  const { reload, bay, loading: locationsLoading } = useData()
   const toast = useToast()
+  const [params] = useSearchParams()
 
   const [mode, setMode] = useState<'location' | 'scan'>('scan')
   const [location, setLocation] = useState<LocationSelection>(EMPTY_LOCATION)
@@ -26,27 +48,62 @@ export default function TakedownPage() {
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const loadBay = useCallback(async (bayId: string) => {
-    if (!bayId) {
-      setRows([])
-      return
+  const [pending, setPending] = useState<Pending[]>([])
+  const [swaps, setSwaps] = useState<Swap[]>([])
+  const [hangError, setHangError] = useState<string | null>(null)
+
+  const busyRef = useRef(false)
+  const pendingRef = useRef<Pending[]>([])
+  pendingRef.current = pending
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Arriving from an install ("take down in this bay") opens on that bay.
+  const presetBay = params.get('bay')
+  const presetApplied = useRef(false)
+  useEffect(() => {
+    if (!presetBay || presetApplied.current || locationsLoading) return
+    const sel = selectionForBay(bay(presetBay))
+    if (sel) {
+      presetApplied.current = true
+      setMode('location')
+      setLocation(sel)
     }
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('v_installations')
-      .select('*')
-      .eq('bay_id', bayId)
-      .is('removed_at', null)
-      .order('installed_at', { ascending: true })
-    if (error) toast('error', friendlyError(error))
-    setRows((data ?? []) as InstallationView[])
-    setSelected(new Set())
-    setLoading(false)
-  }, [toast])
+  }, [presetBay, locationsLoading, bay])
+
+  const loadBay = useCallback(
+    async (bayId: string) => {
+      if (!bayId) {
+        setRows([])
+        return
+      }
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('v_installations')
+        .select('*')
+        .eq('bay_id', bayId)
+        .is('removed_at', null)
+        .order('installed_at', { ascending: true })
+      if (error) toast('error', friendlyError(error))
+      setRows((data ?? []) as InstallationView[])
+      setSelected(new Set())
+      setLoading(false)
+    },
+    [toast],
+  )
 
   useEffect(() => {
     void loadBay(location.bayId)
   }, [location.bayId, loadBay])
+
+  // Bring the replacement prompt into view the moment something comes down.
+  const pendingCount = pending.length
+  const lastCount = useRef(0)
+  useEffect(() => {
+    if (pendingCount > lastCount.current) {
+      panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    lastCount.current = pendingCount
+  }, [pendingCount])
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -57,54 +114,135 @@ export default function TakedownPage() {
     })
   }
 
+  const refreshAfterChange = (bayId?: string) => {
+    void reload()
+    if (location.bayId && (!bayId || bayId === location.bayId)) void loadBay(location.bayId)
+  }
+
+  /* ---------------------------------------------------------- take down */
+
   const takeDownSelected = async () => {
-    if (selected.size === 0 || busy) return
+    if (selected.size === 0 || busyRef.current) return
+    busyRef.current = true
     setBusy(true)
+
+    const chosen = rows.filter((r) => selected.has(r.id))
     const { data, error } = await supabase.rpc('rpc_takedown', {
-      p_installation_ids: Array.from(selected),
+      p_installation_ids: chosen.map((r) => r.id),
       p_reason: reason,
       p_notes: notes.trim() || null,
     })
+
     if (error) {
       toast('error', friendlyError(error))
     } else {
       const n = Number(data ?? 0)
       toast('success', `${n} product${n === 1 ? '' : 's'} taken down — ${reasonLabel(reason)}`)
       setNotes('')
-      void loadBay(location.bayId)
-      void reload()
+      setHangError(null)
+      setPending((p) => [
+        ...p,
+        ...chosen.map((r) => ({
+          installationId: r.id,
+          qrCode: r.qr_code,
+          bayId: r.bay_id,
+          where: describeBay(r),
+        })),
+      ])
+      refreshAfterChange()
     }
+
+    busyRef.current = false
     setBusy(false)
   }
 
-  const takeDownByCode = useCallback(
-    async (code: string) => {
-      if (busy) return
+  const takeDownCode = async (code: string, found: Pick<ProductView, 'installation_id' | 'bay_id' | 'hospital_name' | 'ward_name' | 'bay_name'> | null) => {
+    const { error } = await supabase.rpc('rpc_takedown', {
+      p_qr_codes: [code],
+      p_reason: reason,
+      p_notes: notes.trim() || null,
+    })
+    if (error) {
+      toast('error', friendlyError(error))
+      return
+    }
+    toast('success', `${code} taken down — ${reasonLabel(reason)}`)
+    setHangError(null)
+    if (found?.installation_id && found.bay_id) {
+      setPending((p) => [
+        ...p,
+        { installationId: found.installation_id!, qrCode: code, bayId: found.bay_id!, where: describeBay(found) },
+      ])
+    }
+    refreshAfterChange(found?.bay_id ?? undefined)
+  }
+
+  /* ----------------------------------------------------------- hang up */
+
+  const hang = async (code: string, target: Pending) => {
+    const { data, error } = await supabase.rpc('rpc_install_replacement', {
+      p_qr_code: code,
+      p_replaces_installation_id: target.installationId,
+    })
+    if (error) {
+      const msg = friendlyError(error)
+      setHangError(msg)
+      toast('error', msg)
+      return
+    }
+    const product = data as unknown as ProductView
+    setHangError(null)
+    setPending((p) => p.filter((x) => x.installationId !== target.installationId))
+    setSwaps((s) => [{ newCode: product.qr_code, oldCode: target.qrCode, where: target.where }, ...s])
+    toast('success', `${product.qr_code} hung in ${product.bay_name} — replaces ${target.qrCode}`)
+    refreshAfterChange(target.bayId)
+  }
+
+  /**
+   * One scan, two meanings, decided by the product itself: if it is still
+   * hanging it is coming down; if it is not, and something is waiting for a
+   * replacement, it is going up.
+   */
+  const handleScan = useCallback(
+    async (raw: string) => {
+      const code = normaliseCode(raw)
+      if (!code || busyRef.current) return
+      busyRef.current = true
       setBusy(true)
-      const { error } = await supabase.rpc('rpc_takedown', {
-        p_qr_codes: [code],
-        p_reason: reason,
-        p_notes: notes.trim() || null,
-      })
-      if (error) toast('error', friendlyError(error))
-      else {
-        toast('success', `${code} taken down — ${reasonLabel(reason)}`)
-        void reload()
-        if (location.bayId) void loadBay(location.bayId)
+      try {
+        const { data: found } = await supabase
+          .from('v_products')
+          .select('installation_id, bay_id, hospital_name, ward_name, bay_name')
+          .eq('qr_code', code)
+          .maybeSingle()
+
+        const next = pendingRef.current[0]
+        if (found?.installation_id || !next) {
+          await takeDownCode(code, found)
+        } else {
+          await hang(code, next)
+        }
+      } finally {
+        busyRef.current = false
+        setBusy(false)
       }
-      setBusy(false)
     },
-    [busy, reason, notes, toast, reload, location.bayId, loadBay],
+    // takeDownCode and hang read these; everything else they use is stable.
+    [reason, notes, location.bayId],
   )
 
-  const { hardwareSeen } = useHidScanner(takeDownByCode, mode === 'scan' && !busy)
+  // Hardware scans are live in By-scan mode, and whenever a replacement is due.
+  const { hardwareSeen } = useHidScanner(handleScan, !busy && (mode === 'scan' || pending.length > 0))
+
+  const next = pending[0]
+  const showPanel = pending.length > 0 || swaps.length > 0
 
   return (
     <div className="page">
       <div className="page-head">
         <div>
           <h1>Take down</h1>
-          <p className="page-sub">Log products coming out of service</p>
+          <p className="page-sub">Log products coming out of service — and hang their replacements</p>
         </div>
       </div>
 
@@ -136,10 +274,110 @@ export default function TakedownPage() {
           </span>
           <span className="mode-text">
             <strong>By scan</strong>
-            <small>Scan one product coming down</small>
+            <small>Scan the old one, then the new one</small>
           </span>
         </button>
       </div>
+
+      {showPanel && (
+        <div ref={panelRef} className="next-anchor">
+          <Card className="next-card">
+            {next ? (
+              <>
+                <div className="next-head">
+                  <span className="next-icon" aria-hidden="true">
+                    <IconSwap />
+                  </span>
+                  <div>
+                    <h2>Hang the replacement</h2>
+                    <p className="next-sub">
+                      {pending.length > 1 ? `1 of ${pending.length} waiting` : 'Same bay, one scan'}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="next-where">
+                  <span className="muted">Came down:</span> <strong>{next.qrCode}</strong>
+                  <br />
+                  <span className="muted">Goes up in:</span> <strong>{next.where}</strong>
+                </p>
+
+                <ScanField
+                  onSubmit={handleScan}
+                  hardwareSeen={hardwareSeen}
+                  busy={busy}
+                  autoFocus
+                  label="Scan the new product"
+                />
+                <p className="field-hint">
+                  Scanning a product that is still hanging takes it down instead, and queues its
+                  replacement.
+                </p>
+
+                {hangError && (
+                  <p className="form-error" role="alert">
+                    {hangError}
+                  </p>
+                )}
+
+                <div className="next-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setPending((p) => p.slice(1))}
+                    disabled={busy}
+                  >
+                    {pending.length > 1 ? 'Skip this one' : 'Not replacing it'}
+                  </button>
+                  {pending.length > 1 && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setPending([])}
+                      disabled={busy}
+                    >
+                      Skip all
+                    </button>
+                  )}
+                  <Link className="btn btn-ghost btn-sm" to={installHereUrl(next.bayId, next.installationId)}>
+                    Open Install for this bay
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <div className="next-head">
+                <span className="next-icon is-done" aria-hidden="true">
+                  ✓
+                </span>
+                <div>
+                  <h2>All replacements hung</h2>
+                  <p className="next-sub">Scan the next one coming down to carry on.</p>
+                </div>
+              </div>
+            )}
+
+            {swaps.length > 0 && (
+              <div className="swap-log">
+                <p className="swap-log-title">Swapped this session ({swaps.length})</p>
+                <ul>
+                  {swaps.map((s) => (
+                    <li key={s.newCode}>
+                      <span className="swap-new">{s.newCode}</span>
+                      <span className="swap-old">replaced {s.oldCode}</span>
+                      <span className="swap-where">{s.where}</span>
+                    </li>
+                  ))}
+                </ul>
+                {!next && (
+                  <button type="button" className="link-button" onClick={() => setSwaps([])}>
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
 
       <Card className="step-card step-1">
         <SectionTitle>
@@ -264,21 +502,25 @@ export default function TakedownPage() {
           )}
         </>
       ) : (
-        <Card className="step-card step-2">
-          <SectionTitle>
-            <span className="step-num">2</span> Scan the product coming down
-          </SectionTitle>
-          <ScanField
-            onSubmit={takeDownByCode}
-            hardwareSeen={hardwareSeen}
-            busy={busy}
-            autoFocus
-            label="Scan or type the QR / barcode"
-          />
-          <p className="field-hint">
-            Each scan is logged straight away with the reason selected above.
-          </p>
-        </Card>
+        // While a replacement is waiting, the card above owns the one scan field.
+        !next && (
+          <Card className="step-card step-2">
+            <SectionTitle>
+              <span className="step-num">2</span> Scan the product coming down
+            </SectionTitle>
+            <ScanField
+              onSubmit={handleScan}
+              hardwareSeen={hardwareSeen}
+              busy={busy}
+              autoFocus
+              label="Scan or type the QR / barcode"
+            />
+            <p className="field-hint">
+              Logged straight away with the reason above. You will be asked for its replacement
+              next.
+            </p>
+          </Card>
+        )
       )}
     </div>
   )
@@ -310,6 +552,15 @@ function IconScan() {
     <svg viewBox="0 0 24 24" width="24" height="24" {...strokeProps}>
       <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
       <path d="M4 12h16" />
+    </svg>
+  )
+}
+
+function IconSwap() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" {...strokeProps}>
+      <path d="M7 4v13M3.5 13.5 7 17l3.5-3.5" />
+      <path d="M17 20V7M13.5 10.5 17 7l3.5 3.5" />
     </svg>
   )
 }

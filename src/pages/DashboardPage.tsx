@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase, friendlyError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
-import type { DashboardData } from '../lib/types'
+import type { DashboardData, ProductCounts } from '../lib/types'
 import { REMOVAL_REASONS } from '../lib/types'
 import { dueLabel, formatDate, relativeTime } from '../lib/format'
 import { DEVELOPER } from '../lib/branding'
@@ -17,14 +17,19 @@ export default function DashboardPage() {
 
   const [scope, setScope] = useState<string>('')
   const [data, setData] = useState<DashboardData | null>(null)
+  // Stock is held as boxes; these come from the same scoped counts the
+  // Products tab uses, so the two screens can never disagree.
+  const [stock, setStock] = useState<ProductCounts | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data: res, error: err } = await supabase.rpc('rpc_dashboard', {
-      p_hospital_id: scope || null,
-    })
+    const [{ data: res, error: err }, { data: counts }] = await Promise.all([
+      supabase.rpc('rpc_dashboard', { p_hospital_id: scope || null }),
+      supabase.rpc('rpc_product_counts', { p_hospital_id: scope || null }),
+    ])
+    if (counts) setStock(counts as ProductCounts)
     if (err) setError(friendlyError(err))
     else {
       setData(res as DashboardData)
@@ -82,7 +87,7 @@ export default function DashboardPage() {
         </button>
         <button type="button" className="quick quick-takedown" onClick={() => navigate('/takedown')}>
           <span className="quick-title">Take down</span>
-          <span className="quick-sub">Pick a bay and log the reason</span>
+          <span className="quick-sub">Scan the old one, hang the new one</span>
         </button>
       </div>
 
@@ -102,7 +107,12 @@ export default function DashboardPage() {
           hint="Plan the next round"
           onClick={() => navigate('/inventory?filter=due')}
         />
-        <StatTile label="In stock" value={t.in_stock} hint="Registered, not yet fitted" />
+        <StatTile
+          label="In stock"
+          value={stock ? stock.boxes_in_stock : '—'}
+          hint={stock ? `Boxes · ${stock.items_in_stock} items ready` : 'Boxes'}
+          onClick={() => navigate('/inventory?filter=stock')}
+        />
       </div>
 
       <div className="chart-grid">
@@ -112,7 +122,7 @@ export default function DashboardPage() {
             centreLabel="Products"
             data={[
               { label: 'In use', value: t.in_use, token: '--series-1' },
-              { label: 'In stock', value: t.in_stock, token: '--series-3' },
+              { label: 'Not yet fitted', value: t.in_stock, token: '--series-3' },
               { label: 'Taken down', value: t.removed, token: '--series-2' },
               { label: 'Retired', value: t.retired, token: '--series-4' },
             ]}
@@ -260,7 +270,9 @@ function describeEvent(type: string, detail: Record<string, unknown>): string {
     case 'registered':
       return 'was registered'
     case 'installed':
-      return 'was installed'
+      return detail?.replaces_qr_code
+        ? `was installed, replacing ${String(detail.replaces_qr_code)}`
+        : 'was installed'
     case 'removed': {
       const reason = String(detail?.reason ?? '')
       const label = REMOVAL_REASONS.find((r) => r.value === reason)?.label

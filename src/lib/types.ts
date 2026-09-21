@@ -100,6 +100,10 @@ export interface InstallationView {
   removal_notes: string | null
   state: 'active' | 'ended'
   days_in_service: number
+  /** Set when this installation was hung as a replacement for another. */
+  replaces_installation_id: string | null
+  replaces_qr_code: string | null
+  replaced_by_qr_code: string | null
 }
 
 export interface ProductEvent {

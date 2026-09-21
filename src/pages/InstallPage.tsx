@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { supabase, friendlyError } from '../lib/supabase'
 import { useData } from '../context/DataContext'
 import { useHidScanner } from '../hooks/useHidScanner'
@@ -7,17 +7,36 @@ import ScanField from '../components/ScanField'
 import LocationPicker, { EMPTY_LOCATION, type LocationSelection } from '../components/LocationPicker'
 import { Card, EmptyState, SectionTitle, useToast } from '../components/ui'
 import { formatDate } from '../lib/format'
-import type { ProductView } from '../lib/types'
+import { describeBay, selectionForBay, takeDownHereUrl } from '../lib/location'
+import type { InstallationView, ProductView } from '../lib/types'
 
 const LOCATION_KEY = 'synergy.lastInstallLocation'
+
+/** The take-down this install is standing in for, when opened as a replacement. */
+interface Replacing {
+  installationId: string
+  qrCode: string
+  where: string
+}
+
+/** What is hanging in the current bay right now. */
+interface BayStatus {
+  bayId: string
+  inPlace: number
+  overdue: number
+}
 
 /**
  * Location first, then scan repeatedly. A fitter working a bay sets the
  * location once and then just pulls the trigger for each curtain.
+ *
+ * After each install the screen offers to take something down in the same
+ * bay, so a swap started from this side is one tap away too.
  */
 export default function InstallPage() {
-  const { bay, reload } = useData()
+  const { bay, reload, loading: locationsLoading } = useData()
   const toast = useToast()
+  const [params, setParams] = useSearchParams()
 
   const [location, setLocation] = useState<LocationSelection>(() => {
     try {
@@ -32,13 +51,74 @@ export default function InstallPage() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<ProductView[]>([])
   const [lastError, setLastError] = useState<string | null>(null)
+  const [replacing, setReplacing] = useState<Replacing | null>(null)
+  const [bayStatus, setBayStatus] = useState<BayStatus | null>(null)
   const busyRef = useRef(false)
+  const nextRef = useRef<HTMLDivElement>(null)
+
+  // Links from Take down arrive with ?bay= and, for a swap, ?replaces=.
+  const presetBay = params.get('bay')
+  const replacesId = params.get('replaces')
+  const presetApplied = useRef(false)
+
+  useEffect(() => {
+    if (!presetBay || presetApplied.current || locationsLoading) return
+    const sel = selectionForBay(bay(presetBay))
+    if (sel) {
+      presetApplied.current = true
+      setLocation(sel)
+    }
+  }, [presetBay, locationsLoading, bay])
+
+  useEffect(() => {
+    if (!replacesId) {
+      setReplacing(null)
+      return
+    }
+    let cancelled = false
+    void supabase
+      .from('v_installations')
+      .select('*')
+      .eq('id', replacesId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) return
+        const row = data as InstallationView
+        setReplacing({ installationId: row.id, qrCode: row.qr_code, where: describeBay(row) })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [replacesId])
 
   useEffect(() => {
     if (location.bayId) localStorage.setItem(LOCATION_KEY, JSON.stringify(location))
   }, [location])
 
   const selectedBay = location.bayId ? bay(location.bayId) : undefined
+
+  const loadBayStatus = useCallback(async (bayId: string) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const { data } = await supabase
+      .from('v_installations')
+      .select('due_date')
+      .eq('bay_id', bayId)
+      .is('removed_at', null)
+    const list = (data ?? []) as { due_date: string }[]
+    setBayStatus({ bayId, inPlace: list.length, overdue: list.filter((r) => r.due_date < today).length })
+  }, [])
+
+  const stopReplacing = useCallback(() => {
+    setReplacing(null)
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('replaces')
+        return next
+      },
+      { replace: true },
+    )
+  }, [setParams])
 
   const install = useCallback(
     async (code: string) => {
@@ -53,11 +133,18 @@ export default function InstallPage() {
       setBusy(true)
       setLastError(null)
 
-      const { data, error } = await supabase.rpc('rpc_install_product', {
-        p_qr_code: code,
-        p_bay_id: location.bayId,
-        p_due_days: dueDays === '' ? null : Number(dueDays),
-      })
+      const due = dueDays === '' ? null : Number(dueDays)
+      const { data, error } = replacing
+        ? await supabase.rpc('rpc_install_replacement', {
+            p_qr_code: code,
+            p_replaces_installation_id: replacing.installationId,
+            p_due_days: due,
+          })
+        : await supabase.rpc('rpc_install_product', {
+            p_qr_code: code,
+            p_bay_id: location.bayId,
+            p_due_days: due,
+          })
 
       if (error) {
         const msg = friendlyError(error)
@@ -66,17 +153,31 @@ export default function InstallPage() {
       } else {
         const product = data as unknown as ProductView
         setDone((d) => [product, ...d])
-        toast('success', `${product.qr_code} installed · change due ${formatDate(product.due_date)}`)
+        toast(
+          'success',
+          replacing
+            ? `${product.qr_code} hung — replaces ${replacing.qrCode}`
+            : `${product.qr_code} installed · change due ${formatDate(product.due_date)}`,
+        )
+        if (replacing) stopReplacing()
         void reload()
+        void loadBayStatus(location.bayId)
       }
 
       busyRef.current = false
       setBusy(false)
     },
-    [location.bayId, dueDays, toast, reload],
+    [location.bayId, dueDays, replacing, toast, reload, loadBayStatus, stopReplacing],
   )
 
   const { hardwareSeen } = useHidScanner(install, !busy)
+
+  const showNext = done.length > 0 && bayStatus && bayStatus.bayId === location.bayId && selectedBay
+
+  // On a phone the follow-up lands below the fold; bring it up after each install.
+  useEffect(() => {
+    if (showNext) nextRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [showNext, done.length])
 
   return (
     <div className="page">
@@ -91,7 +192,7 @@ export default function InstallPage() {
         <SectionTitle>
           <span className="step-num">1</span> Where are you working?
         </SectionTitle>
-        <LocationPicker value={location} onChange={setLocation} disabled={busy} />
+        <LocationPicker value={location} onChange={setLocation} disabled={busy || !!replacing} />
 
         {selectedBay && (
           <p className="location-confirm">
@@ -134,8 +235,21 @@ export default function InstallPage() {
 
       <Card className="step-card step-2">
         <SectionTitle>
-          <span className="step-num">2</span> Scan the product
+          <span className="step-num">2</span> {replacing ? 'Scan the replacement' : 'Scan the product'}
         </SectionTitle>
+
+        {replacing && (
+          <div className="replacing-banner">
+            <p>
+              Replacing <strong>{replacing.qrCode}</strong>, taken down from{' '}
+              <strong>{replacing.where}</strong>. The next scan hangs its replacement here.
+            </p>
+            <button type="button" className="link-button" onClick={stopReplacing}>
+              Not a replacement
+            </button>
+          </div>
+        )}
+
         <ScanField
           onSubmit={install}
           hardwareSeen={hardwareSeen}
@@ -151,6 +265,28 @@ export default function InstallPage() {
           </p>
         )}
       </Card>
+
+      {showNext && (
+        <div ref={nextRef} className="next-anchor">
+          <Card className="next-card">
+            <div className="next-head">
+              <span className="next-icon" aria-hidden="true">
+                <IconDown />
+              </span>
+              <div>
+                <h2>Taking something down in {selectedBay.bay_name}?</h2>
+                <p className="next-sub">
+                  {bayStatus.inPlace} in place
+                  {bayStatus.overdue > 0 ? ` · ${bayStatus.overdue} overdue` : ' · none overdue'}
+                </p>
+              </div>
+            </div>
+            <Link className="btn btn-primary btn-block" to={takeDownHereUrl(location.bayId)}>
+              Take down in this bay
+            </Link>
+          </Card>
+        </div>
+      )}
 
       <Card className="step-card step-3">
         <SectionTitle
@@ -183,5 +319,24 @@ export default function InstallPage() {
         )}
       </Card>
     </div>
+  )
+}
+
+function IconDown() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 21V10" />
+      <path d="m8 14 4-4 4 4" />
+      <path d="M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2" />
+    </svg>
   )
 }
