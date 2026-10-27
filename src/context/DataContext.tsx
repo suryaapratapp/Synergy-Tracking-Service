@@ -4,10 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { supabase } from '../lib/supabase'
+import { isNetworkError, networkUsable, reportNetwork, withTimeout } from '../lib/offline/network'
+import { cacheLocations, cachedLocations } from '../lib/offline/snapshot'
 import type { LocationRow } from '../lib/types'
 import { useAuth } from './AuthContext'
 
@@ -15,6 +18,9 @@ import { useAuth } from './AuthContext'
  * The location list changes rarely but is needed on almost every screen, so
  * it is fetched once per session and kept in memory. RLS already trims it to
  * the sites the signed-in user may see.
+ *
+ * A copy is also kept on the phone, so the pickers still work in a ward with
+ * no signal.
  */
 
 interface DataValue {
@@ -32,32 +38,62 @@ interface DataValue {
 const DataContext = createContext<DataValue | null>(null)
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { session } = useAuth()
+  const { signedIn } = useAuth()
   const [locations, setLocations] = useState<LocationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const haveRows = useRef(false)
+  haveRows.current = locations.length > 0
 
   const reload = useCallback(async () => {
-    if (!session) {
+    if (!signedIn) {
       setLocations([])
       setLoading(false)
       return
     }
     setLoading(true)
-    const { data, error: err } = await supabase
-      .from('v_locations')
-      .select('*')
-      .order('hospital_name')
-      .order('floor')
-      .order('ward_name')
-      .order('bay_name')
-    if (err) setError(err.message)
-    else {
-      setLocations((data ?? []) as LocationRow[])
+
+    let rows: LocationRow[] | null = null
+    let message: string | null = null
+    if (networkUsable()) {
+      try {
+        const { data, error: err } = await withTimeout((signal) =>
+          supabase
+            .from('v_locations')
+            .select('*')
+            .order('hospital_name')
+            .order('floor')
+            .order('ward_name')
+            .order('bay_name')
+            .abortSignal(signal),
+        )
+        if (err) throw err
+        rows = (data ?? []) as LocationRow[]
+        reportNetwork(true)
+        void cacheLocations(rows)
+      } catch (e) {
+        if (isNetworkError(e)) reportNetwork(false)
+        else message = (e as { message?: string }).message ?? 'Could not load locations'
+      }
+    }
+
+    if (rows) {
+      setLocations(rows)
       setError(null)
+    } else if (!haveRows.current) {
+      // No answer from the server: fall back to the copy kept on this phone.
+      const cached = await cachedLocations()
+      if (cached.length > 0) {
+        setLocations(cached)
+        setError(null)
+      } else {
+        setError(
+          message ?? 'No signal, and no site list saved on this phone yet. Connect once to download it.',
+        )
+      }
     }
     setLoading(false)
-  }, [session])
+  }, [signedIn])
 
   useEffect(() => {
     void reload()

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { supabase, friendlyError } from '../lib/supabase'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { useHidScanner } from '../hooks/useHidScanner'
@@ -8,9 +7,15 @@ import ScanField from '../components/ScanField'
 import LocationPicker, { EMPTY_LOCATION, type LocationSelection } from '../components/LocationPicker'
 import { Card, EmptyState, SectionTitle, useToast } from '../components/ui'
 import { formatDate } from '../lib/format'
-import { actorArgs } from '../lib/guest'
-import { describeBay, selectionForBay, takeDownHereUrl } from '../lib/location'
-import type { InstallationView, ProductView } from '../lib/types'
+import { selectionForBay, takeDownHereUrl } from '../lib/location'
+import {
+  bayInstallations,
+  hangReplacement,
+  installProduct,
+  installationInfo,
+  type InstalledItem,
+} from '../lib/offline/actions'
+import { useSyncState } from '../lib/offline/queue'
 
 const LOCATION_KEY = 'synergy.lastInstallLocation'
 
@@ -52,10 +57,13 @@ export default function InstallPage() {
   const [dueDays, setDueDays] = useState<number | ''>('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [done, setDone] = useState<ProductView[]>([])
+  const [done, setDone] = useState<InstalledItem[]>([])
   const [lastError, setLastError] = useState<string | null>(null)
   const [replacing, setReplacing] = useState<Replacing | null>(null)
   const [bayStatus, setBayStatus] = useState<BayStatus | null>(null)
+  const sync = useSyncState()
+  const syncRef = useRef(sync)
+  syncRef.current = sync
   const busyRef = useRef(false)
   const nextRef = useRef<HTMLDivElement>(null)
 
@@ -79,16 +87,10 @@ export default function InstallPage() {
       return
     }
     let cancelled = false
-    void supabase
-      .from('v_installations')
-      .select('*')
-      .eq('id', replacesId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled || !data) return
-        const row = data as InstallationView
-        setReplacing({ installationId: row.id, qrCode: row.qr_code, where: describeBay(row) })
-      })
+    void installationInfo(replacesId).then((info) => {
+      if (cancelled || !info) return
+      setReplacing(info)
+    })
     return () => {
       cancelled = true
     }
@@ -99,16 +101,12 @@ export default function InstallPage() {
   }, [location])
 
   const selectedBay = location.bayId ? bay(location.bayId) : undefined
+  const waiting = new Set(sync.pendingOps.map((o) => o.opId))
 
   const loadBayStatus = useCallback(async (bayId: string) => {
     const today = new Date().toISOString().slice(0, 10)
-    const { data } = await supabase
-      .from('v_installations')
-      .select('due_date')
-      .eq('bay_id', bayId)
-      .is('removed_at', null)
-    const list = (data ?? []) as { due_date: string }[]
-    setBayStatus({ bayId, inPlace: list.length, overdue: list.filter((r) => r.due_date < today).length })
+    const { rows } = await bayInstallations(bayId, syncRef.current)
+    setBayStatus({ bayId, inPlace: rows.length, overdue: rows.filter((r) => r.due_date < today).length })
   }, [])
 
   const stopReplacing = useCallback(() => {
@@ -137,42 +135,43 @@ export default function InstallPage() {
       setLastError(null)
 
       const due = dueDays === '' ? null : Number(dueDays)
-      const { data, error } = replacing
-        ? await supabase.rpc('rpc_install_replacement', {
-            p_qr_code: code,
-            p_replaces_installation_id: replacing.installationId,
-            p_due_days: due,
-            ...actorArgs(),
-          })
-        : await supabase.rpc('rpc_install_product', {
-            p_qr_code: code,
-            p_bay_id: location.bayId,
-            p_due_days: due,
-            ...actorArgs(),
-          })
+      const row = bay(location.bayId)
+      const normal = code.trim().replace(/\s+/g, '').toUpperCase()
 
-      if (error) {
-        const msg = friendlyError(error)
-        setLastError(msg)
-        toast('error', msg)
-      } else {
-        const product = data as unknown as ProductView
-        setDone((d) => [product, ...d])
+      try {
+        if (!row) throw new Error('Choose the hospital, floor, ward and bay first.')
+        const item = replacing
+          ? await hangReplacement({
+              code: normal,
+              replacesInstallationId: replacing.installationId,
+              replacesCode: replacing.qrCode,
+              bay: row,
+              dueDays: due,
+            })
+          : await installProduct({ code: normal, bay: row, dueDays: due })
+
+        setDone((d) => [item, ...d])
         toast(
-          'success',
-          replacing
-            ? `${product.qr_code} hung — replaces ${replacing.qrCode}`
-            : `${product.qr_code} installed · change due ${formatDate(product.due_date)}`,
+          item.queued ? 'info' : 'success',
+          item.queued
+            ? `${item.qr_code} saved on this phone — it will be sent when you have signal`
+            : replacing
+              ? `${item.qr_code} hung — replaces ${replacing.qrCode}`
+              : `${item.qr_code} installed · change due ${formatDate(item.due_date)}`,
         )
         if (replacing) stopReplacing()
         void reload()
         void loadBayStatus(location.bayId)
+      } catch (err) {
+        const msg = (err as Error).message
+        setLastError(msg)
+        toast('error', msg)
       }
 
       busyRef.current = false
       setBusy(false)
     },
-    [location.bayId, dueDays, replacing, toast, reload, loadBayStatus, stopReplacing],
+    [location.bayId, dueDays, replacing, toast, reload, loadBayStatus, stopReplacing, bay],
   )
 
   const { hardwareSeen } = useHidScanner(install, !busy)
@@ -310,13 +309,14 @@ export default function InstallPage() {
         ) : (
           <ul className="result-list">
             {done.map((p) => (
-              <li key={p.installation_id ?? p.id}>
-                {isGuest ? (
+              <li key={p.key}>
+                {isGuest || !p.id ? (
                   <div className="result-row">
                     <span className="result-code">{p.qr_code}</span>
                     <span className="result-meta">
                       {p.ward_name} · {p.bay_name}
                     </span>
+                    {p.queued && waiting.has(p.key) && <span className="badge badge-queued">On this phone</span>}
                     <span className="badge badge-due-ok">Due {formatDate(p.due_date)}</span>
                   </div>
                 ) : (

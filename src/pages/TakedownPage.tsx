@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { supabase, friendlyError } from '../lib/supabase'
-import { actorArgs } from '../lib/guest'
+import {
+  bayInstallations,
+  hangReplacement,
+  lookupProduct,
+  takeDown,
+} from '../lib/offline/actions'
+import { useSyncState } from '../lib/offline/queue'
+import type { CachedProduct } from '../lib/offline/snapshot'
 import { useData } from '../context/DataContext'
 import { useHidScanner } from '../hooks/useHidScanner'
 import ScanField from '../components/ScanField'
@@ -9,7 +15,7 @@ import LocationPicker, { EMPTY_LOCATION, type LocationSelection } from '../compo
 import { Card, EmptyState, SectionTitle, Spinner, useToast } from '../components/ui'
 import { dueLabel, formatDate, normaliseCode } from '../lib/format'
 import { describeBay, installHereUrl, selectionForBay } from '../lib/location'
-import { REMOVAL_REASONS, type InstallationView, type ProductView, type RemovalReason } from '../lib/types'
+import { REMOVAL_REASONS, type InstallationView, type RemovalReason } from '../lib/types'
 
 /** Something that has just come down and is waiting for its replacement. */
 interface Pending {
@@ -38,6 +44,9 @@ interface Swap {
 export default function TakedownPage() {
   const { reload, bay, loading: locationsLoading } = useData()
   const toast = useToast()
+  const sync = useSyncState()
+  const syncRef = useRef(sync)
+  syncRef.current = sync
   const [params] = useSearchParams()
 
   const [mode, setMode] = useState<'location' | 'scan'>('scan')
@@ -47,6 +56,7 @@ export default function TakedownPage() {
   const [reason, setReason] = useState<RemovalReason>('expired')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
+  const [fromPhone, setFromPhone] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const [pending, setPending] = useState<Pending[]>([])
@@ -71,26 +81,18 @@ export default function TakedownPage() {
     }
   }, [presetBay, locationsLoading, bay])
 
-  const loadBay = useCallback(
-    async (bayId: string) => {
-      if (!bayId) {
-        setRows([])
-        return
-      }
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('v_installations')
-        .select('*')
-        .eq('bay_id', bayId)
-        .is('removed_at', null)
-        .order('installed_at', { ascending: true })
-      if (error) toast('error', friendlyError(error))
-      setRows((data ?? []) as InstallationView[])
-      setSelected(new Set())
-      setLoading(false)
-    },
-    [toast],
-  )
+  const loadBay = useCallback(async (bayId: string) => {
+    if (!bayId) {
+      setRows([])
+      return
+    }
+    setLoading(true)
+    const { rows: found, live } = await bayInstallations(bayId, syncRef.current)
+    setRows(found)
+    setFromPhone(!live)
+    setSelected(new Set())
+    setLoading(false)
+  }, [])
 
   useEffect(() => {
     void loadBay(location.bayId)
@@ -128,18 +130,20 @@ export default function TakedownPage() {
     setBusy(true)
 
     const chosen = rows.filter((r) => selected.has(r.id))
-    const { data, error } = await supabase.rpc('rpc_takedown', {
-      p_installation_ids: chosen.map((r) => r.id),
-      p_reason: reason,
-      p_notes: notes.trim() || null,
-      ...actorArgs(),
-    })
-
-    if (error) {
-      toast('error', friendlyError(error))
-    } else {
-      const n = Number(data ?? 0)
-      toast('success', `${n} product${n === 1 ? '' : 's'} taken down — ${reasonLabel(reason)}`)
+    try {
+      const res = await takeDown({
+        installationIds: chosen.map((r) => r.id),
+        idCodes: chosen.map((r) => r.qr_code),
+        reason,
+        notes: notes.trim() || null,
+      })
+      const n = res.count
+      toast(
+        res.queued ? 'info' : 'success',
+        res.queued
+          ? `${n} product${n === 1 ? '' : 's'} saved as taken down — sent when you have signal`
+          : `${n} product${n === 1 ? '' : 's'} taken down — ${reasonLabel(reason)}`,
+      )
       setNotes('')
       setHangError(null)
       setPending((p) => [
@@ -152,24 +156,30 @@ export default function TakedownPage() {
         })),
       ])
       refreshAfterChange()
+    } catch (err) {
+      toast('error', (err as Error).message)
     }
 
     busyRef.current = false
     setBusy(false)
   }
 
-  const takeDownCode = async (code: string, found: Pick<ProductView, 'installation_id' | 'bay_id' | 'hospital_name' | 'ward_name' | 'bay_name'> | null) => {
-    const { error } = await supabase.rpc('rpc_takedown', {
-      p_qr_codes: [code],
-      p_reason: reason,
-      p_notes: notes.trim() || null,
-      ...actorArgs(),
-    })
-    if (error) {
-      toast('error', friendlyError(error))
+  const takeDownCode = async (
+    code: string,
+    found: Pick<CachedProduct, 'installation_id' | 'bay_id' | 'hospital_name' | 'ward_name' | 'bay_name'> | undefined,
+  ) => {
+    try {
+      const res = await takeDown({ codes: [code], reason, notes: notes.trim() || null })
+      toast(
+        res.queued ? 'info' : 'success',
+        res.queued
+          ? `${code} saved as taken down — sent when you have signal`
+          : `${code} taken down — ${reasonLabel(reason)}`,
+      )
+    } catch (err) {
+      toast('error', (err as Error).message)
       return
     }
-    toast('success', `${code} taken down — ${reasonLabel(reason)}`)
     setHangError(null)
     if (found?.installation_id && found.bay_id) {
       setPending((p) => [
@@ -183,23 +193,31 @@ export default function TakedownPage() {
   /* ----------------------------------------------------------- hang up */
 
   const hang = async (code: string, target: Pending) => {
-    const { data, error } = await supabase.rpc('rpc_install_replacement', {
-      p_qr_code: code,
-      p_replaces_installation_id: target.installationId,
-      ...actorArgs(),
-    })
-    if (error) {
-      const msg = friendlyError(error)
+    try {
+      const row = bay(target.bayId)
+      if (!row) throw new Error('Unknown location')
+      const item = await hangReplacement({
+        code,
+        replacesInstallationId: target.installationId,
+        replacesCode: target.qrCode,
+        bay: row,
+        dueDays: null,
+      })
+      setHangError(null)
+      setPending((p) => p.filter((x) => x.installationId !== target.installationId))
+      setSwaps((s) => [{ newCode: item.qr_code, oldCode: target.qrCode, where: target.where }, ...s])
+      toast(
+        item.queued ? 'info' : 'success',
+        item.queued
+          ? `${item.qr_code} saved on this phone — replaces ${target.qrCode}`
+          : `${item.qr_code} hung in ${item.bay_name} — replaces ${target.qrCode}`,
+      )
+      refreshAfterChange(target.bayId)
+    } catch (err) {
+      const msg = (err as Error).message
       setHangError(msg)
       toast('error', msg)
-      return
     }
-    const product = data as unknown as ProductView
-    setHangError(null)
-    setPending((p) => p.filter((x) => x.installationId !== target.installationId))
-    setSwaps((s) => [{ newCode: product.qr_code, oldCode: target.qrCode, where: target.where }, ...s])
-    toast('success', `${product.qr_code} hung in ${product.bay_name} — replaces ${target.qrCode}`)
-    refreshAfterChange(target.bayId)
   }
 
   /**
@@ -214,11 +232,7 @@ export default function TakedownPage() {
       busyRef.current = true
       setBusy(true)
       try {
-        const { data: found } = await supabase
-          .from('v_products')
-          .select('installation_id, bay_id, hospital_name, ward_name, bay_name')
-          .eq('qr_code', code)
-          .maybeSingle()
+        const found = await lookupProduct(code, syncRef.current)
 
         const next = pendingRef.current[0]
         if (found?.installation_id || !next) {
@@ -232,7 +246,7 @@ export default function TakedownPage() {
       }
     },
     // takeDownCode and hang read these; everything else they use is stable.
-    [reason, notes, location.bayId],
+    [reason, notes, location.bayId, bay],
   )
 
   // Hardware scans are live in By-scan mode, and whenever a replacement is due.
@@ -456,7 +470,10 @@ export default function TakedownPage() {
             ) : loading ? (
               <Spinner />
             ) : rows.length === 0 ? (
-              <EmptyState title="Nothing is installed in this bay" />
+              <EmptyState
+                title={fromPhone ? 'Nothing is installed in this bay, as far as this phone knows' : 'Nothing is installed in this bay'}
+                hint={fromPhone ? 'No signal — this is the list saved on your phone. Scan a product to take it down anyway.' : undefined}
+              />
             ) : (
               <ul className="pick-list">
                 {rows.map((r) => {

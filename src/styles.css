@@ -1174,3 +1174,52 @@ button.stat:hover { background: var(--raised); }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------------- offline */
+
+.sync-bar {
+  display: block; width: 100%; border: 0; text-align: center; cursor: pointer;
+  font: inherit; font-size: 0.85rem; line-height: 1.4; padding: 9px 14px; color: #fff;
+}
+.sync-offline { background: #7c2d12; }
+.sync-sending { background: #1d4ed8; }
+.sync-failed { background: #b91c1c; }
+
+.sync-group { margin: 14px 0; }
+.sync-group h3 { font-size: 0.95rem; margin: 0 0 8px; }
+.sync-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sync-item {
+  display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--raised); border: 1px solid var(--border); font-size: 0.9rem;
+}
+.sync-item-failed { border-color: #f3c5c5; background: #fff5f5; }
+.sync-item-label { font-weight: 600; word-break: break-word; }
+.sync-item-error { color: #b91c1c; }
+.sync-item-meta { color: var(--ink-3); font-size: 0.8rem; }
+.sync-item .link-button { justify-self: start; }
+.sync-actions { display: flex; gap: 8px; }
+.sync-foot { margin-top: 14px; font-size: 0.82rem; }
+
+.ready-card {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface);
+  font-size: 0.85rem; line-height: 1.4;
+}
+.ready-ok { border-color: #bfe9d8; background: #f1fbf6; }
+.ready-warn { border-color: #f6dba2; background: #fff9eb; }
+.ready-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.ready-ok .ready-dot { background: #0ca30c; }
+.ready-warn .ready-dot { background: #eda100; }
+.ready-text { display: flex; flex-direction: column; flex: 1; min-width: 0; color: var(--ink-2); }
+.ready-text strong { color: var(--ink); }
+
+.badge-queued { background: #fff4e0; color: #8a5300; border-color: #f6dba2; }
+
+.login-notice {
+  margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: #fff9eb; border: 1px solid #f6dba2; color: #6b4a00;
+  font-size: 0.85rem; line-height: 1.45; text-align: center;
+}
+
+.pin-set { margin: 16px 0; padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.pin-set h3 { margin: 0; font-size: 0.95rem; }

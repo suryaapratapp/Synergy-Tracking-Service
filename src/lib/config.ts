@@ -27,15 +27,17 @@ export const SUPABASE_ANON_KEY =
   import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || FALLBACK_ANON_KEY
 
 /**
- * The shared guest login behind "Continue as guest". A fitter types their name
+ * The shared guest login behind "Guest". A fitter types their name and a PIN
  * and is signed in as this account, which can only install and take down - it
  * cannot see the overview, products or reports, and cannot change anything
  * else (enforced in the database, not just hidden in the interface).
  *
- * Like the publishable key above this ships in the bundle by design, so it is
- * not a secret. To switch guest access off, deactivate the "guest" user under
- * Users & settings; to rotate it, change the password in Supabase Auth and
- * here, then ship a new build.
+ * The account's password is GUEST_PEPPER followed by the PIN, so the PIN is the
+ * only secret: the pepper is public like everything else in this file, and
+ * exists so a short PIN still meets Supabase's minimum password length. An
+ * administrator sets the PIN under Users & settings -> Guest login; changing it
+ * signs out every phone still holding the old one. To switch guest access off,
+ * deactivate the "guest" user there.
  */
 export const GUEST_USERNAME = 'guest'
-export const GUEST_PASSWORD = 'vlF3Q9I5x6r00YDRpTwj75NCVXwl'
+export const GUEST_PEPPER = 'vlF3Q9I5x6r00YDRpTwj75NCVXwl'

@@ -10,6 +10,11 @@ interface Props {
   minLength?: number
   disabled?: boolean
   autoFocus?: boolean
+  /** A PIN: digits only, number pad on phones. */
+  numeric?: boolean
+  maxLength?: number
+  large?: boolean
+  label?: string
 }
 
 /**
@@ -27,6 +32,10 @@ export default function PasswordInput({
   minLength,
   disabled = false,
   autoFocus = false,
+  numeric = false,
+  maxLength,
+  large = false,
+  label = 'password',
 }: Props) {
   const [show, setShow] = useState(false)
 
@@ -34,10 +43,13 @@ export default function PasswordInput({
     <div className="password-field">
       <input
         id={id}
-        className="input"
+        className={large ? 'input input-lg' : 'input'}
         type={show ? 'text' : 'password'}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(numeric ? e.target.value.replace(/\D/g, '') : e.target.value)}
+        inputMode={numeric ? 'numeric' : undefined}
+        pattern={numeric ? '[0-9]*' : undefined}
+        maxLength={maxLength}
         autoComplete={autoComplete}
         placeholder={placeholder}
         required={required}
@@ -54,7 +66,7 @@ export default function PasswordInput({
         onClick={() => setShow((v) => !v)}
         disabled={disabled}
         aria-pressed={show}
-        aria-label={show ? 'Hide password' : 'Show password'}
+        aria-label={show ? `Hide ${label}` : `Show ${label}`}
       >
         {show ? 'Hide' : 'Show'}
       </button>

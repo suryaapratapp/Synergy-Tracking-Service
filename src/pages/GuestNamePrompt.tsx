@@ -18,7 +18,7 @@ export default function GuestNamePrompt() {
           <h2>Who&rsquo;s working today?</h2>
           <p>Type your name to carry on.</p>
         </div>
-        <GuestNameForm cta="Continue" onSubmit={setGuestName} />
+        <GuestNameForm cta="Continue" askPin={false} onSubmit={(name) => setGuestName(name)} />
         <button type="button" className="link-button login-alt" onClick={() => void signOut()}>
           Use a staff login instead
         </button>

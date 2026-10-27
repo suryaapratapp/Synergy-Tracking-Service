@@ -1,7 +1,7 @@
 /**
  * Guests share one login, so the person behind it is just a typed name. It is
- * kept on the device and sent with every install / take-down, where the
- * database stores it as the installer / remover.
+ * kept on the device and saved with every install / take-down job (see
+ * lib/offline), where the database stores it as the installer / remover.
  */
 
 const KEY = 'tex-trak.guestName'
@@ -27,13 +27,4 @@ export function storeGuestName(name: string) {
   } catch {
     /* private mode - the name just will not survive a reload */
   }
-}
-
-/**
- * Extra RPC argument naming the guest. Staff accounts send nothing: the
- * database ignores the name for anyone who is not signed in as the guest.
- */
-export function actorArgs(): { p_actor_name?: string } {
-  const name = readGuestName()
-  return name ? { p_actor_name: name } : {}
 }

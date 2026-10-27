@@ -4,6 +4,8 @@ import { APP_NAME, APP_TAGLINE, DEVELOPER } from '../lib/branding'
 import PasswordInput from '../components/PasswordInput'
 import BrandMark from '../components/BrandMark'
 import GuestNameForm from '../components/GuestNameForm'
+import { useSyncState } from '../lib/offline/queue'
+import { useNetworkUsable } from '../lib/offline/network'
 
 type Mode = 'guest' | 'staff'
 const MODE_KEY = 'tex-trak.loginMode'
@@ -18,6 +20,8 @@ function initialMode(): Mode {
 
 export default function LoginPage() {
   const { signIn, signInAsGuest } = useAuth()
+  const sync = useSyncState()
+  const online = useNetworkUsable()
   const [mode, setModeState] = useState<Mode>(initialMode)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -82,13 +86,26 @@ export default function LoginPage() {
           </button>
         </div>
 
+        {(sync.pending > 0 || sync.failed > 0) && (
+          <p className="login-notice" role="status">
+            {sync.pending + sync.failed} job{sync.pending + sync.failed === 1 ? '' : 's'} done offline{' '}
+            {sync.pending + sync.failed === 1 ? 'is' : 'are'} saved on this phone and will be sent once you
+            sign in with a connection.
+          </p>
+        )}
+        {!online && (
+          <p className="login-notice" role="status">
+            No signal — you can still sign in with your PIN if this phone has been used here before.
+          </p>
+        )}
+
         {mode === 'guest' ? (
           <>
             <div className="login-lead">
               <h2>Who&rsquo;s working today?</h2>
               <p>Type your name and start installing or taking down.</p>
             </div>
-            <GuestNameForm busy={busy} error={error} onSubmit={(name) => void run(() => signInAsGuest(name))} />
+            <GuestNameForm busy={busy} error={error} onSubmit={(name, pin) => void run(() => signInAsGuest(name, pin))} />
           </>
         ) : (
           <form onSubmit={onStaffSubmit} className="login-form">

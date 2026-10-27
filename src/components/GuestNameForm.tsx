@@ -1,26 +1,34 @@
 import { useState, type FormEvent } from 'react'
 import { MAX_GUEST_NAME } from '../lib/guest'
+import { isValidPin, PIN_MAX, PIN_MIN } from '../lib/offline/identity'
+import PasswordInput from './PasswordInput'
 import { IconArrow } from './icons'
 
-/** One big field and one big button - everything a fitter needs to get going. */
+/** One name, one PIN, one big button - everything a fitter needs to get going. */
 export default function GuestNameForm({
   initial = '',
   busy = false,
   error,
   cta = 'Start working',
+  askPin = true,
   onSubmit,
 }: {
   initial?: string
   busy?: boolean
   error?: string | null
   cta?: string
-  onSubmit: (name: string) => void
+  /** Off when the session already exists and only the name was lost. */
+  askPin?: boolean
+  onSubmit: (name: string, pin: string) => void
 }) {
   const [name, setName] = useState(initial)
+  const [pin, setPin] = useState('')
+
+  const ready = !!name.trim() && (!askPin || isValidPin(pin))
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (name.trim() && !busy) onSubmit(name)
+    if (ready && !busy) onSubmit(name, pin)
   }
 
   return (
@@ -43,19 +51,41 @@ export default function GuestNameForm({
         />
       </div>
 
+      {askPin && (
+        <div className="field">
+          <label className="field-label" htmlFor="guest-pin">
+            PIN
+          </label>
+          <PasswordInput
+            id="guest-pin"
+            value={pin}
+            onChange={setPin}
+            numeric
+            large
+            maxLength={PIN_MAX}
+            label="PIN"
+            autoComplete="off"
+            placeholder={`${PIN_MIN}–${PIN_MAX} digits`}
+            required
+          />
+        </div>
+      )}
+
       {error && (
         <p className="form-error" role="alert">
           {error}
         </p>
       )}
 
-      <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy || !name.trim()}>
+      <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy || !ready}>
         {busy ? 'Starting…' : cta}
         {!busy && <IconArrow />}
       </button>
 
       <p className="login-help">
-        No password needed. Your name is saved with every product you install or take down.
+        {askPin
+          ? 'Ask your supervisor for the PIN. Your name is saved with every product you install or take down.'
+          : 'Your name is saved with every product you install or take down.'}
       </p>
     </form>
   )

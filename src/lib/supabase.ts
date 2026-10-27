@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config'
+import { deviceFetch } from './offline/deviceFetch'
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
@@ -8,7 +9,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     detectSessionInUrl: false,
     storageKey: 'synergy-auth',
   },
-  global: { headers: { 'x-application-name': 'tex-trak' } },
+  // The app has its own offline queue and cache, so the library's built-in
+  // retries (which stall a read for ~7 seconds on a dead connection) only get in the way.
+  db: { retry: false },
+  global: { headers: { 'x-application-name': 'tex-trak' }, fetch: deviceFetch },
 })
 
 /**

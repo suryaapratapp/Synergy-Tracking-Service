@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui'
+import { OfflineReadiness } from '../components/SyncStatus'
+import { useNetworkUsable } from '../lib/offline/network'
 import { IconArrow, IconDashboard, IconInstall, IconList, IconLock, IconTakedown } from '../components/icons'
 import { DEVELOPER } from '../lib/branding'
 import type { ProductCounts } from '../lib/types'
@@ -34,6 +36,7 @@ export default function HomePage() {
   const { profile, isGuest, guestName } = useAuth()
   const { hospitals } = useData()
   const toast = useToast()
+  const usable = useNetworkUsable()
   const [counts, setCounts] = useState<ProductCounts | null>(null)
 
   useEffect(() => {
@@ -127,7 +130,9 @@ export default function HomePage() {
               )}
               <span className="tile-text">
                 <span className="tile-title">{t.title}</span>
-                <span className="tile-sub">{locked ? 'Staff only' : t.sub}</span>
+                <span className="tile-sub">
+                  {locked ? 'Staff only' : t.staffOnly && !usable ? 'Needs signal' : t.sub}
+                </span>
               </span>
               {!locked && (
                 <span className="tile-go" aria-hidden="true">
@@ -154,6 +159,8 @@ export default function HomePage() {
           )
         })}
       </div>
+
+      <OfflineReadiness />
 
       <p className="credit">{DEVELOPER}</p>
     </div>

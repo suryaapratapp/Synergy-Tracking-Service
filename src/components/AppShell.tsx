@@ -3,7 +3,9 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { APP_NAME, DEVELOPER } from '../lib/branding'
 import { ROLE_LABELS } from '../lib/types'
-import { Sheet, useOnlineStatus } from './ui'
+import { Sheet } from './ui'
+import SyncStatus from './SyncStatus'
+import { useSyncState } from '../lib/offline/queue'
 import {
   IconChart,
   IconCog,
@@ -32,7 +34,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [renaming, setRenaming] = useState(false)
   const [draftName, setDraftName] = useState('')
   const navigate = useNavigate()
-  const online = useOnlineStatus()
+  const sync = useSyncState()
 
   // A guest only ever sees the two jobs they can do.
   const primary: NavItem[] = isGuest
@@ -63,6 +65,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const roleLabel = profile ? ROLE_LABELS[profile.role] : 'Hospital'
   const who = isGuest ? guestName || 'Guest' : (profile?.full_name ?? profile?.username ?? roleLabel)
 
+  /** Leaving with unsent jobs is allowed - they stay on the phone - but never silent. */
+  const leave = () => {
+    const unsent = sync.pending
+    if (
+      unsent > 0 &&
+      !window.confirm(
+        `${unsent} saved job${unsent === 1 ? ' has' : 's have'} not been sent yet. They stay on this phone and are sent the next time someone signs in with signal. Exit anyway?`,
+      )
+    )
+      return
+    setMoreOpen(false)
+    void signOut()
+  }
+
   const saveName = (e: FormEvent) => {
     e.preventDefault()
     if (!draftName.trim()) return
@@ -90,17 +106,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         <div className="topbar-right">
           <span className={`role-chip role-${profile?.role ?? 'hospital'}`}>{roleLabel}</span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void signOut()}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={leave}>
             {isGuest ? 'Exit' : 'Sign out'}
           </button>
         </div>
       </header>
 
-      {!online && (
-        <div className="offline-bar" role="status">
-          You are offline — recent changes may not be saved until you reconnect.
-        </div>
-      )}
+      <SyncStatus />
 
       <main className="content">{children}</main>
 
@@ -190,10 +202,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <button
           type="button"
           className="btn btn-block btn-danger-ghost"
-          onClick={() => {
-            setMoreOpen(false)
-            void signOut()
-          }}
+          onClick={leave}
         >
           {isGuest ? 'Exit guest mode' : 'Sign out'}
         </button>

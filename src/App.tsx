@@ -20,11 +20,11 @@ const LabelsPage = lazy(() => import('./pages/LabelsPage'))
 const AccountPage = lazy(() => import('./pages/AccountPage'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { session, profile, loading, isGuest, guestName } = useAuth()
+  const { signedIn, profile, loading, isGuest, guestName } = useAuth()
   const location = useLocation()
 
   if (loading) return <FullPageSpinner />
-  if (!session) return <Navigate to="/login" state={{ from: location }} replace />
+  if (!signedIn) return <Navigate to="/login" state={{ from: location }} replace />
   if (!profile) return <FullPageSpinner />
   // A guest session with no name on this device (cleared storage) must say who they are first.
   if (isGuest && !guestName) return <GuestNamePrompt />
@@ -65,13 +65,13 @@ function FullPageSpinner() {
 }
 
 export default function App() {
-  const { session, loading } = useAuth()
+  const { signedIn, loading } = useAuth()
 
   if (loading) return <FullPageSpinner />
 
   return (
     <Routes>
-      <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route path="/login" element={signedIn ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route
         path="*"
         element={

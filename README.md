@@ -56,7 +56,7 @@ The same interface is packaged as an installable Android app with Capacitor — 
 
 ## Roles
 
-Fitters can tap **Guest**, type their name and start straight away. Staff sign in
+Fitters can tap **Guest**, type their name and the guest PIN, and start straight away. Staff sign in
 with a **username** (`admin`, `synergy`, `queenmary`, …), not an email address.
 Either way the home screen is four big buttons: Dashboard, Install, Take down and
 Products.
@@ -67,7 +67,7 @@ Products.
 | **Synergy** | All sites and all products | Register labels, install, take down, import locations, report |
 | **Synergy field** | All sites and all products | The same, but **without Reports** — for team members who do the fitting work only |
 | **Hospital** | Only its own hospital | Install, take down and report for that site |
-| **Guest** | Install and take down at any site | Type a name and go — no password. Nothing else: the overview, products and reports are refused by the database |
+| **Guest** | Install and take down at any site | Type a name and the shared PIN. Nothing else: the overview, products and reports are refused by the database |
 
 Scoping is enforced in the database (row level security), not just the interface:
 a hospital login cannot read another hospital's data even by calling the API
@@ -76,6 +76,15 @@ directly.
 Every user can change their own password under **My account** — current password,
 new password and repeat, each with a *Show* toggle. The current password is
 re-checked before the change is accepted.
+
+## Working offline
+
+Install, take down, scanning and guest sign-in keep working with no signal — in a
+basement ward, a lift, a dead spot. Jobs are saved on the phone, sent in order
+when signal returns, and applied by the server only once. A strip under the
+header shows what is waiting, and the home screen says when the phone is *Ready
+for no signal*. The first sign-in on each phone needs a connection (it downloads
+the site and product lists). Details: [docs/HANDOVER.md](docs/HANDOVER.md#working-offline).
 
 ## QR labels
 
@@ -134,6 +143,7 @@ src/
   context/      AuthContext (session + role), DataContext (location cache)
   hooks/        useHidScanner (hardware scanners), useMeasure
   lib/          supabase client, branding, types, CSV, QR, formatting
+  lib/offline/  job queue, product/site snapshot, offline PIN, network health
   pages/        Login, Dashboard, Install, Takedown, Register, Inventory,
                 ProductDetail, Reports, Locations, Labels, Admin
 supabase/       SQL migrations and the admin-create-user edge function

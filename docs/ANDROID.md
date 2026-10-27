@@ -67,7 +67,8 @@ and the key above becomes the *upload* key, which Google can reset if lost.
 
 ## Known limits
 
-- No push notifications, and the app needs a network connection to read or write
-  data. Only the interface itself is available offline.
+- No push notifications. Install, take-down, scanning and guest sign-in work with no
+  signal (jobs are saved on the phone and sent later — see HANDOVER.md, *Working
+  offline*); the dashboard, products and reports need a connection.
 - The launcher icon is a plain teal square with a scan glyph — a placeholder until
   there is real branding (`android/app/src/main/res/mipmap-*`).

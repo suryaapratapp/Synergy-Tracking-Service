@@ -3,7 +3,10 @@ import { supabase, friendlyError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { Card, EmptyState, Field, SectionTitle, Sheet, Spinner, useToast } from '../components/ui'
+import PasswordInput from '../components/PasswordInput'
+import { GUEST_PEPPER } from '../lib/config'
 import { formatDate } from '../lib/format'
+import { isValidPin, PIN_MAX, PIN_MIN } from '../lib/offline/identity'
 import { ROLE_HELP, ROLE_LABELS, type Profile, type UserRole } from '../lib/types'
 
 const ASSIGNABLE_ROLES: UserRole[] = ['hospital', 'synergy_field', 'synergy', 'admin']
@@ -19,6 +22,8 @@ export default function AdminPage() {
   const [savingSetting, setSavingSetting] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Profile | null>(null)
+  const [newPin, setNewPin] = useState('')
+  const [pinBusy, setPinBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -56,6 +61,19 @@ export default function AdminPage() {
       await load()
       await reload()
     }
+  }
+
+  const setGuestPin = async () => {
+    if (!isValidPin(newPin) || pinBusy) return
+    setPinBusy(true)
+    const { error } = await supabase.rpc('admin_set_guest_pin', { p_password: GUEST_PEPPER + newPin })
+    setPinBusy(false)
+    if (error) {
+      toast('error', friendlyError(error))
+      return
+    }
+    setNewPin('')
+    toast('success', 'Guest PIN changed. Phones using the old PIN will be signed out shortly.')
   }
 
   const hospitalName = (id: string | null) => hospitals.find((h) => h.id === id)?.name ?? '—'
@@ -156,6 +174,35 @@ export default function AdminPage() {
               <span>Guest access is switched on</span>
             </label>
             <p className="muted">Switching it off stops guests working straight away, including anyone already signed in.</p>
+
+            <div className="pin-set">
+              <h3>Guest PIN</h3>
+              <p className="muted">
+                Fitters type this with their name to sign in. The PIN cannot be read back, only replaced. A new PIN
+                signs out phones using the old one within about an hour; a phone with no signal keeps accepting the
+                old PIN until it next connects. Jobs still unsent on those phones are kept and go through once the
+                fitter signs in again with the new PIN.
+              </p>
+              <PasswordInput
+                id="new-pin"
+                value={newPin}
+                onChange={setNewPin}
+                numeric
+                maxLength={PIN_MAX}
+                label="PIN"
+                autoComplete="off"
+                placeholder={`New PIN (${PIN_MIN}–${PIN_MAX} digits)`}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-block"
+                disabled={!isValidPin(newPin) || pinBusy}
+                onClick={() => void setGuestPin()}
+              >
+                {pinBusy ? 'Saving…' : 'Set new PIN'}
+              </button>
+            </div>
+
             <button
               type="button"
               className="btn btn-primary btn-block"

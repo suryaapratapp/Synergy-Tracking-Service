@@ -46,32 +46,99 @@ Reports is removed from the navigation and the `/reports` address redirects home
 
 ### Guest access (for fitters)
 
-The sign-in screen opens on **Guest**: a fitter types their name and is working
-straight away, with no username or password. Under the hood this is one shared
-account, `guest`, whose role can do exactly two things — **install** and
-**take down** (including the one-scan swap). The overview, products, reports,
-labels, locations and settings are refused by the database, not just hidden:
-the dashboard and count functions raise *"Guests cannot view the overview"*, and
-every write other than install / take-down is blocked by row level security.
+The sign-in screen opens on **Guest**: a fitter types their name and a **PIN**
+and is working straight away — no username or password to remember. Under the
+hood this is one shared account, `guest`, whose role can do exactly two things —
+**install** and **take down** (including the one-scan swap). The overview,
+products, reports, labels, locations and settings are refused by the database,
+not just hidden: the dashboard and count functions raise *"Guests cannot view the
+overview"*, and every write other than install / take-down is blocked by row
+level security.
 
-- **Who did it:** the typed name is sent with each install / take-down and stored
-  with it (`installations.installed_by_label` / `removed_by_label`, and in the
-  event log). Products and history screens show it wherever an installer or
-  remover is named. A guest action with no name is rejected.
+- **The PIN:** 4–8 digits, set by an administrator under Users & settings →
+  *Guest login (shared)* → *Guest PIN*. It is the only secret: the guest
+  account's real password is a fixed public prefix (`GUEST_PEPPER` in
+  `src/lib/config.ts`, there so a short PIN still meets Supabase's minimum
+  password length) followed by the PIN. The PIN cannot be read back, only
+  replaced. Replacing it (`admin_set_guest_pin`) deletes the guest's sessions, so
+  phones are signed out within about an hour, when their current token lapses.
+  The initial PIN is in `CREDENTIALS.local.md` (git-ignored).
+- **Who did it:** the typed name is saved with each install / take-down
+  (`installations.installed_by_label` / `removed_by_label`, and in the event
+  log). Products and history screens show it wherever an installer or remover is
+  named. A guest action with no name is rejected.
 - **Home screen:** staff see four big buttons — Dashboard, Install, Take down,
   Products. A guest sees the same four, with Dashboard and Products locked.
 - **Switch it off:** Users & settings → *Guest login (shared)* → untick *Guest
-  access is switched on*. Takes effect immediately, including for guests who are
-  already signed in.
-- **Trade-off to be aware of:** the guest password is compiled into the app
-  (`src/lib/config.ts`) — it has to be, for sign-in to need no typing — so anyone
-  who has the app or the public repository can use guest access. That is the
-  intended convenience, and it is why the guest role is limited as above; but a
-  guest can still read and change installation records at every site. If that is
-  too open for production, switch guest access off, or ask for it to be scoped to
-  a PIN or a single site. To rotate the password, change it in Supabase Auth and
-  in `config.ts`, then ship a new build.
+  access is switched on*. Takes effect immediately for anyone online; a phone
+  with no signal keeps working until it next connects.
+- **Trade-offs:** a 4–6 digit PIN can be guessed by someone determined who is
+  willing to hammer the sign-in endpoint (Supabase rate-limits it, which slows
+  but does not stop that), so use 6–8 digits and rotate it when a fitter leaves.
+  Any guest can still read and change installation records at every site; if that
+  is too open, ask for it to be scoped per site.
 - A guest's name lives on the device. Signing out (or **Exit**) clears it.
+
+### Working offline
+
+Hospital wards lose signal, so everything a fitter does on site works without it.
+Nothing about the screens changes; the phone just keeps the work and sends it later.
+
+| Works with no signal | Needs signal |
+|---|---|
+| Opening the app (installed Android app, or the web app after its first visit) | The first sign-in on each phone |
+| **Guest sign-in with the PIN** | Dashboard, Products, Reports, Labels, Admin |
+| Scanning (camera, hardware scanner, typing) and the hospital → floor → ward → bay pickers | Seeing other people's changes made while you were offline |
+| **Install, take down and the one-scan swap** | |
+
+How it works (`src/lib/offline/`):
+
+- **Saved first, sent second.** Every install / take-down is written to the phone's
+  queue (`queue.ts`, IndexedDB) before anything goes to the server, then sent
+  straight away if the network answers. A job is never lost to a dropped
+  connection, a closed app or a dead battery.
+- **In order.** Jobs are sent oldest first, so a take-down always lands before the
+  replacement hung in its place.
+- **Exactly once.** Each job carries its own id; the server (`client_ops`) applies
+  a repeated job once, so retrying after a lost reply cannot double-book. An
+  install's id *is* the installation's id, which is how a product installed and
+  taken down entirely offline still hangs together.
+- **When it really happened.** Each job carries the time the fitter did it
+  (`p_occurred_at`). The server accepts it only within the last 45 days and never
+  in the future, so a wrong phone clock cannot rewrite history.
+- **The phone's own copy** (`snapshot.ts`): the site list and every product's
+  state, downloaded after sign-in and topped up with only what changed. Scans are
+  checked against it with no signal — a repeat install, a retired label or "not
+  installed" is caught on the spot. Jobs done offline are applied to it
+  immediately so the next scan sees them. It is only a guide: if it is stale and
+  the server disagrees, the server wins (below).
+- **When the server says no.** A refused job (someone else installed it first, the
+  label was retired) is kept, shown in a red banner with the reason, and can be
+  dismissed or retried; the phone's copy is corrected from the server. Nothing
+  disappears silently.
+- **Offline PIN check** (`identity.ts`): after one online sign-in the phone keeps a
+  salted PBKDF2 hash of the PIN. Offline, a typed PIN is compared with it; five
+  wrong tries lock it for a minute. It is a gate on the app, not a vault — someone
+  holding the phone with time to spare could guess a short PIN against that hash.
+  A PIN change reaches a phone the next time it connects; until then the old PIN
+  still opens the app on that phone.
+- **Signing in properly afterwards.** Signed in offline, the app signs in with the
+  server by itself once signal returns (holding the PIN in memory only) and sends
+  the queue. If it cannot (the PIN has since changed), the fitter is asked to
+  sign in again; the saved jobs stay on the phone and go through afterwards.
+- **Banner and home card.** A strip under the header says *Offline* / *Sending N
+  saved jobs* / *N could not be saved*; tapping it lists them. The home screen
+  shows *Ready for no signal* once the site and product lists are on the phone.
+- **Leaving with unsent jobs.** *Exit* warns first. The jobs stay on the phone and
+  are sent the next time someone signs in with signal.
+
+Not covered: Dashboard / Products / Reports (they need live data), and a *brand
+new* label that was registered after the phone's last sync is accepted offline
+without a check and verified by the server when it connects.
+
+For developers: in `npm run dev`, `localStorage['dev.offline'] = '1'` makes every
+server request fail like a dead connection and survives reloads — the practical
+way to test "reopen the app with no signal". It is compiled out of production builds.
 
 Supabase Auth is email-keyed underneath, so each account carries a deterministic
 internal address `<username>@synergy.local`. Nothing is ever sent to it — it is
@@ -293,9 +360,8 @@ the confirm button behaves exactly as before.
 
 ## 7. Known limits / suggested next steps
 
-1. **Offline** — the app shell is cached so it opens without signal, but writes
-   need a connection. If fitters work in basements, an offline queue is the next
-   thing worth building.
+1. **Offline** — install, take-down, scanning and guest sign-in work with no signal
+   (see *Working offline*). Staff-only screens still need a connection.
 2. **Location list** — currently placeholder data pending Synergy's CSV.
 3. **Password reset** — no self-service reset flow; an admin re-issues a password.
    Supabase email reset can be enabled once an SMTP sender is configured.
