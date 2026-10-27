@@ -280,8 +280,8 @@ export default function LabelsPage() {
           <QrLabel code={sampleCode(productCode)} svg={sampleSvg} />
           <div className="label-preview-note">
             <p>
-              Codes look like <code>{prefix}AAAA0001</code> — a fixed <strong>RZCIR</strong> prefix,
-              the product code, then four letters and four digits.
+              Codes look like <code>{prefix}AAA001</code> — a fixed <strong>RZCIR</strong> prefix,
+              the product code, then three letters and three digits.
             </p>
             <p className="muted">
               Codes are issued in ascending serial order and reserved as they are generated. A number

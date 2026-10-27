@@ -89,15 +89,15 @@ the site and product lists). Details: [docs/HANDOVER.md](docs/HANDOVER.md#workin
 ## QR labels
 
 Admins generate label codes under **QR labels** in the fixed format
-`RZCIR-<product code>-AAAAXXXX` — e.g. `RZCIR-MVN191-AAAA0001`, a product
-code then four letters and four digits. Up to 500 per click; download the CSV for a label
+`RZCIR-<product code>-AAA999` — e.g. `RZCIR-MVN191-AAA001`, a product
+code then three letters and three digits. Up to 500 per click; download the CSV for a label
 printer, or print a sheet of 28 × 34 mm labels with the code in small type under
 each QR.
 
 Codes are issued in **ascending serial order** and are **never reused** — the
 counter is held separately from the products table, so deleting a product (or
 wiping the demo data) does not free its number. Each product line has its own
-series, and 4.5 billion codes per line.
+series, and about 17.5 million codes per line.
 
 ## How scanning works
 

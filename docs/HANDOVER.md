@@ -175,16 +175,19 @@ change takes effect immediately — they sign in with the new name straight away
 ## 2. What the app does
 
 **QR labels** (admin only) — generates label codes in the fixed format
-`RZCIR-<product code>-AAAAXXXX`, e.g. `RZCIR-MVN191-AAAA0001` — a product code
-(MVN191 for the current curtain line) then four letters and four digits. Choose the product and a quantity (up to 500 per
+`RZCIR-<product code>-AAA999`, e.g. `RZCIR-MVN191-AAA001` — a product code
+(MVN191 for the current curtain line) then three letters and three digits. Choose the product and a quantity (up to 500 per
 click), press generate, then download the CSV for the label printer or print a
 ready-made sheet of 28 × 34 mm labels. Each label carries the QR with the code
 printed underneath, so a damaged label can still be typed in. A preview of the
 exact label is shown before generating.
 
 **Codes are issued in ascending serial order and are never reused.** The order
-runs `AAAA0001 → AAAA9999 → AAAB0001 → …`, giving 4,569,105,024 codes per product
-line. Each product line keeps its own series (`RZCIR-BEDS-AAAA0001` starts fresh).
+runs `AAA001 → AAA999 → AAB001 → …`, giving 17,558,424 codes per product
+line (26³ letter blocks × 999 numbers); the database refuses to issue past that
+rather than repeat. Each product line keeps its own series (`RZCIR-BEDS-AAA001`
+starts fresh). Scans and registration only require the `RZCIR` prefix, so a label
+in the earlier 4-letter / 4-digit format is still recognised.
 
 The counter lives in `public.code_counters`, not in the products table, which is
 what makes "never reused" hold absolutely: deleting a product — or wiping the
@@ -302,8 +305,9 @@ enforcement point reads from it.
 
 **Existing labels are migrated whenever the format changes**, so nothing in the
 field is orphaned: `SYN-100023` → `RZCIR-CURT-100023` → serial format →
-`RZCIR-MVN191-AAAA0001`. Each migration keeps history intact and carries the
-serial counter across so numbering continues rather than restarting.
+`RZCIR-MVN191-AAAA0001` → `RZCIR-MVN191-AAA001` (27 Oct 2026, when the database
+held no labels, so the counter restarted at zero). Earlier migrations kept
+history intact and carried the serial counter across.
 
 ## 4. Security
 
@@ -327,14 +331,11 @@ event and stock box was removed, ready for real use. Kept: all logins, the three
 hospitals with their wards and bays (hospital logins point at them), and the
 label serial counter.
 
-The counter is deliberately **not** reset. Codes are never reused, so the next
-labels the admin generates carry on from where the demo left off rather than
-repeating a code that a printed test label might still carry. If you are certain
-no test label exists anywhere and want numbering to restart at `AAAA0001`:
-
-```sql
-update public.code_counters set last_serial = 0;
-```
+When the code format changed to 3 letters + 3 digits the counter was reset, so
+the first label generated is `RZCIR-MVN191-AAA001`. A code in the old 4+4 format
+can never equal a 3+3 code, so nothing can repeat. From here on the counter never
+rewinds — if you ever wipe test data again, leave it alone so a printed test label
+cannot be reissued. (Only if you are certain none exists: `update public.code_counters set last_serial = 0;`)
 
 The three placeholder hospitals (Queen Mary, St Thomas General, Royal Albert) and
 their wards and bays are stand-ins until Synergy's real location list arrives —

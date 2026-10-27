@@ -1,8 +1,8 @@
 import QRCode from 'qrcode'
 
 /**
- * Label codes are `RZCIR-<product code>-AAAAXXXX`, e.g.
- * `RZCIR-MVN191-AAAA0001` — four letters then four digits, issued in
+ * Label codes are `RZCIR-<product code>-AAA999`, e.g.
+ * `RZCIR-MVN191-AAA001` — three letters then three digits, issued in
  * ascending serial order. The database mints and reserves them; these
  * helpers only mirror the format for previews.
  */
@@ -10,7 +10,7 @@ export const CODE_PREFIX = 'RZCIR'
 /** The product code for the curtain line currently in service. */
 export const DEFAULT_PRODUCT_CODE = 'MVN191'
 /** Shape of the serial block, shown in previews. */
-export const SERIAL_SAMPLE = 'AAAA0001'
+export const SERIAL_SAMPLE = 'AAA001'
 
 /** Uppercase, letters and digits only — matches what the database accepts. */
 export function normaliseProductCode(code: string): string {
