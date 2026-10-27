@@ -75,6 +75,18 @@ export async function defaultDueDays(): Promise<number> {
   return (await kvGet<{ default_due_days: number }>(CONFIG_KEY))?.default_due_days ?? FALLBACK_DUE_DAYS
 }
 
+/**
+ * Is this one of our labels? Checked against the prefixes the server has ever
+ * issued (kept on the phone). If the phone has never received them, say yes -
+ * a wrong "no" would block a real label, while the server checks it properly later.
+ */
+export async function looksLikeOurCode(code: string): Promise<boolean> {
+  const prefixes = (await kvGet<{ code_prefixes?: string[] }>(CONFIG_KEY))?.code_prefixes
+  if (!prefixes || prefixes.length === 0) return true
+  const upper = code.toUpperCase()
+  return prefixes.some((p) => upper.startsWith(p.toUpperCase()))
+}
+
 async function refreshConfig() {
   const { data, error } = await withTimeout((signal) =>
     supabase.rpc('rpc_offline_config').abortSignal(signal),

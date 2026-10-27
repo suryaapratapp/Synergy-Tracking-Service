@@ -88,10 +88,10 @@ the site and product lists). Details: [docs/HANDOVER.md](docs/HANDOVER.md#workin
 
 ## QR labels
 
-Admins generate label codes under **QR labels** in the fixed format
-`RZCIR-<product code>-AAA999` — e.g. `RZCIR-MVN191-AAA001`, a product
-code then three letters and three digits (the default; an admin can change how
-many letters and digits on the same screen — see below). Up to 500 per click; download the CSV for a label
+Admins generate label codes under **QR labels**, by default
+`RZCIR-<product code>-AAA999` — e.g. `RZCIR-MVN191-AAA001`: a prefix, a product
+code, then three letters and three digits (an admin can change the prefix and the
+letters and digits on the same screen — see below). Up to 500 per click; download the CSV for a label
 printer, or print a sheet of 28 × 34 mm labels with the code in small type under
 each QR.
 
@@ -104,10 +104,15 @@ series, and about 17.5 million codes per line at the default format.
 and 1–8 digits; the preview and the number of codes it allows update as you choose
 (formats allowing fewer than 10,000 are refused). A new format applies to labels
 generated from then on — labels already printed keep working, because scanning only
-requires the `RZCIR` prefix. Each format has its own numbering that starts at
+checks the prefix. Each format has its own numbering that starts at
 `…001`, so switching to 4 + 4 begins at `AAAA0001`, and switching back resumes
 where 3 + 3 stopped. Codes of different shapes can never be equal, so nothing is
-ever issued twice. The `RZCIR` prefix itself is fixed.
+ever issued twice.
+
+**Changing the prefix.** The same *Code format* panel has a *Prefix* field (3–10
+letters or digits). New labels carry it from then on. Labels already printed with
+an earlier prefix keep working: every prefix ever used stays accepted, and each
+prefix has its own numbering.
 
 ## How scanning works
 

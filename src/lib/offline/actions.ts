@@ -17,6 +17,7 @@ import {
   fetchProductNet,
   getByInstallationLocal,
   getProductLocal,
+  looksLikeOurCode,
   type CachedProduct,
 } from './snapshot'
 import { enqueue, flush, newId, removePending, takeResult, watch, type OpRpc, type SyncState } from './queue'
@@ -86,7 +87,7 @@ function whereIs(p: CachedProduct): string {
 
 /** Obvious mistakes, caught from the phone's copy when the server cannot be asked. */
 async function checkInstall(code: string): Promise<string | null> {
-  if (!/^RZCIR/.test(code)) return `${code} is not a valid product label`
+  if (!(await looksLikeOurCode(code))) return `${code} is not a valid product label`
   const p = await getProductLocal(code)
   if (!p) return null // not on this phone's list - the server decides when it can
   if (p.status === 'retired') return `Product ${code} has been retired`
@@ -96,7 +97,7 @@ async function checkInstall(code: string): Promise<string | null> {
 
 async function checkTakedown(codes: string[]): Promise<string | null> {
   for (const code of codes) {
-    if (!/^RZCIR/.test(code)) return `${code} is not a valid product label`
+    if (!(await looksLikeOurCode(code))) return `${code} is not a valid product label`
     const p = await getProductLocal(code)
     if (p && !p.installation_id) return `${code} is not currently installed${STALE}`
   }

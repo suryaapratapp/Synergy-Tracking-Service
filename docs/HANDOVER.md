@@ -194,9 +194,9 @@ changed by an admin under QR labels → *Code format* (`admin_set_code_format`:
 from then on; existing labels are untouched and still scan. Every format keeps its
 own counter in `code_counters` (key e.g. `RZCIR-MVN191-3x3`, `RZCIR-MVN191-4x4`), so
 a new format starts at `…001`, and returning to an old one resumes where it stopped.
-Codes of different shapes cannot be equal, so nothing is ever reissued. The `RZCIR`
-prefix is not configurable: scanning and registration check for it. Scans and registration only require the `RZCIR` prefix, so a label
-in the earlier 4-letter / 4-digit format is still recognised.
+Codes of different shapes cannot be equal, so nothing is ever reissued. Scans and
+registration only check the prefix, so a label in the earlier 4-letter / 4-digit
+format is still recognised.
 
 The counter lives in `public.code_counters`, not in the products table, which is
 what makes "never reused" hold absolutely: deleting a product — or wiping the
@@ -286,8 +286,9 @@ caller's role and site before touching anything.
 ## 3a. Only our own labels are accepted
 
 A phone camera reads any QR or barcode it is pointed at — a poster, a packet of
-gloves, a delivery note. Anything whose code does not begin with **`RZCIR`** is
-rejected before it can touch a product record, and the user sees
+gloves, a delivery note. Anything whose code does not begin with one of our label
+prefixes (**`RZCIR`** unless an admin has added another — see below) is rejected
+before it can touch a product record, and the user sees
 `<code> is not a valid product label`.
 
 This is enforced in the database only, and is deliberately **not mentioned
@@ -295,7 +296,7 @@ anywhere in the interface**:
 
 | Where | What it does |
 |---|---|
-| `public.is_house_code(text)` | The single rule — code must start with `RZCIR`, case-insensitive |
+| `public.is_house_code(text)` | The single rule — code must start with a prefix listed in `app_settings.code_prefixes` (initially `RZCIR`), case-insensitive |
 | `rpc_register_product` | Rejects before creating a product |
 | `rpc_install_product` | Rejects before fitting |
 | `rpc_takedown` | Rejects every scanned code before removing anything |
@@ -304,13 +305,21 @@ anywhere in the interface**:
 Verified against real EAN-13 barcodes, URLs, plain text and the old code format;
 all four paths reject them, including a direct API write that bypasses the RPCs.
 
-To widen or change the accepted prefix later, edit `is_house_code` — every
-enforcement point reads from it.
+**Changing the prefix.** An admin sets it under QR labels → *Code format → Prefix*
+(3–10 letters or digits; `admin_set_code_format`). New labels carry the new prefix
+and it is added to `app_settings.code_prefixes`; **no prefix is ever removed**, so
+labels already printed under an earlier prefix keep scanning, installing and
+taking down. Each prefix has its own counters (`ACME-MVN191-3x3`, …) that start at
+`…001` and never rewind; switching back resumes the old numbering. Phones keep the
+accepted prefixes (`rpc_offline_config`) so the offline checks agree with the
+server. To widen the rule some other way, edit `is_house_code` — every enforcement
+point reads from it.
 
 > Note on spelling: the request said "RZCIRC". The generator produces
-> `RZCIR-MVN191-…`, so the rule matches the fixed **`RZCIR`** prefix originally
+> `RZCIR-MVN191-…`, so the rule matches the **`RZCIR`** prefix originally
 > specified — which accepts both spellings. A literal six-character `RZCIRC`
-> match would have rejected every code the system mints.
+> match would have rejected every code the system mints. The same applies to any
+> prefix added later: matching is "starts with", not an exact block.
 
 **Existing labels are migrated whenever the format changes**, so nothing in the
 field is orphaned: `SYN-100023` → `RZCIR-CURT-100023` → serial format →

@@ -9,11 +9,14 @@ import {
   MAX_LETTERS,
   codeCapacity,
   codePrefixFor,
+  isValidPrefix,
   normaliseProductCode,
+  normalisePrefix,
   qrSvg,
   qrSvgMany,
   responsiveSvg,
   sampleCode,
+  serialSample,
   type CodeFormat,
 } from '../lib/qr'
 import { downloadCsv, toCsv } from '../lib/csv'
@@ -44,15 +47,17 @@ export default function LabelsPage() {
   const [printing, setPrinting] = useState(false)
   const [recent, setRecent] = useState<{ batch: string | null; n: number; at: string }[]>([])
 
-  const prefix = useMemo(() => codePrefixFor(productCode), [productCode])
-
-  // The code format: what is saved, and what is being edited on this screen.
   const [saved, setSaved] = useState<CodeFormat>(DEFAULT_CODE_FORMAT)
   const [draft, setDraft] = useState<CodeFormat>(DEFAULT_CODE_FORMAT)
+  const prefix = useMemo(() => codePrefixFor(productCode, draft.prefix), [productCode, draft.prefix])
+
+  // The code format: what is saved (above), and what is being edited on this screen.
   const [savingFormat, setSavingFormat] = useState(false)
-  const dirty = draft.letters !== saved.letters || draft.digits !== saved.digits
+  const dirty =
+    draft.prefix !== saved.prefix || draft.letters !== saved.letters || draft.digits !== saved.digits
   const capacity = codeCapacity(draft)
   const tooSmall = capacity < 10000n
+  const prefixBad = !isValidPrefix(draft.prefix)
 
   useEffect(() => {
     void supabase
@@ -63,7 +68,7 @@ export default function LabelsPage() {
       .then(({ data }) => {
         const v = data?.value as Partial<CodeFormat> | undefined
         if (v?.letters && v?.digits) {
-          const f = { letters: v.letters, digits: v.digits }
+          const f = { prefix: v.prefix || DEFAULT_CODE_FORMAT.prefix, letters: v.letters, digits: v.digits }
           setSaved(f)
           setDraft(f)
         }
@@ -71,9 +76,10 @@ export default function LabelsPage() {
   }, [])
 
   const saveFormat = async () => {
-    if (!dirty || tooSmall || savingFormat) return
+    if (!dirty || tooSmall || prefixBad || savingFormat) return
     setSavingFormat(true)
     const { error } = await supabase.rpc('admin_set_code_format', {
+      p_prefix: draft.prefix,
       p_letters: draft.letters,
       p_digits: draft.digits,
     })
@@ -328,9 +334,9 @@ export default function LabelsPage() {
           <QrLabel code={sampleCode(productCode, draft)} svg={sampleSvg} />
           <div className="label-preview-note">
             <p>
-              Codes look like <code>{sampleCode(productCode, draft)}</code> — a fixed <strong>RZCIR</strong>{' '}
-              prefix, the product code, then {draft.letters} letter{draft.letters === 1 ? '' : 's'} and{' '}
-              {draft.digits} digit{draft.digits === 1 ? '' : 's'}.
+              Codes look like <code>{sampleCode(productCode, draft)}</code> — the prefix{' '}
+              <strong>{draft.prefix || '…'}</strong>, the product code, then {draft.letters} letter
+              {draft.letters === 1 ? '' : 's'} and {draft.digits} digit{draft.digits === 1 ? '' : 's'}.
             </p>
             <p className="muted">
               Codes are issued in ascending serial order and reserved as they are generated. A number
@@ -342,6 +348,19 @@ export default function LabelsPage() {
         <div className="format-edit">
           <h3>Code format</h3>
           <div className="form-grid">
+            <Field label="Prefix" htmlFor="fmt-prefix" hint="3–10 letters or digits at the start of every code.">
+              <input
+                id="fmt-prefix"
+                className="input"
+                value={draft.prefix}
+                onChange={(e) => setDraft({ ...draft, prefix: normalisePrefix(e.target.value) })}
+                maxLength={10}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </Field>
             <Field label="Letters" htmlFor="fmt-letters">
               <select
                 id="fmt-letters"
@@ -371,21 +390,23 @@ export default function LabelsPage() {
               </select>
             </Field>
           </div>
-          <p className={tooSmall ? 'form-error' : 'muted'}>
-            {tooSmall
-              ? `Only ${capacity.toLocaleString('en-GB')} codes per product — choose a longer format.`
-              : `Room for ${capacity.toLocaleString('en-GB')} codes per product.`}
+          <p className={tooSmall || prefixBad ? 'form-error' : 'muted'}>
+            {prefixBad
+              ? 'The prefix must be 3 to 10 letters or digits.'
+              : tooSmall
+                ? `Only ${capacity.toLocaleString('en-GB')} codes per product — choose a longer format.`
+                : `Room for ${capacity.toLocaleString('en-GB')} codes per product.`}
           </p>
           <p className="muted">
-            A new format applies to labels generated from now on. Labels already printed keep working, and
-            each format counts up from {sampleCode(productCode, draft).slice(prefix.length)} on its own, so no
-            code is ever issued twice.
+            A new prefix or format applies to labels generated from now on. Labels already printed keep working
+            — every earlier prefix is still accepted. Each prefix and format counts up from{' '}
+            {serialSample(draft)} on its own, so no code is ever issued twice.
           </p>
           <button
             type="button"
             className="btn btn-ghost btn-block"
             onClick={() => void saveFormat()}
-            disabled={!dirty || tooSmall || savingFormat}
+            disabled={!dirty || tooSmall || prefixBad || savingFormat}
           >
             {savingFormat ? 'Saving…' : dirty ? 'Save this format' : 'Format is saved'}
           </button>
@@ -395,7 +416,7 @@ export default function LabelsPage() {
           type="button"
           className="btn btn-primary btn-lg btn-block"
           onClick={() => void generate()}
-          disabled={busy || dirty || normaliseProductCode(productCode).length < 2}
+          disabled={busy || dirty || prefixBad || normaliseProductCode(productCode).length < 2}
         >
           {busy
             ? 'Generating…'

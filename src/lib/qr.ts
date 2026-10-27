@@ -1,11 +1,12 @@
 import QRCode from 'qrcode'
 
 /**
- * Label codes are `RZCIR-<product code>-<letters><digits>`, e.g.
- * `RZCIR-MVN191-AAA001` — by default three letters then three digits, issued
- * in ascending serial order. An administrator can change how many letters and
- * digits (stored in `app_settings.code_format`). The database mints and
- * reserves the codes; these helpers only mirror the format for previews.
+ * Label codes are `<prefix>-<product code>-<letters><digits>`, e.g.
+ * `RZCIR-MVN191-AAA001` — by default prefix RZCIR, then three letters and
+ * three digits, issued in ascending serial order. An administrator can change
+ * the prefix and how many letters and digits (stored in
+ * `app_settings.code_format`). The database mints and reserves the codes;
+ * these helpers only mirror the format for previews.
  */
 export const CODE_PREFIX = 'RZCIR'
 /** The product code for the curtain line currently in service. */
@@ -13,11 +14,21 @@ export const DEFAULT_PRODUCT_CODE = 'MVN191'
 
 /** How many letters and digits make up the serial block. */
 export interface CodeFormat {
+  prefix: string
   letters: number
   digits: number
 }
 
-export const DEFAULT_CODE_FORMAT: CodeFormat = { letters: 3, digits: 3 }
+export const DEFAULT_CODE_FORMAT: CodeFormat = { prefix: CODE_PREFIX, letters: 3, digits: 3 }
+
+/** Uppercase letters and digits only, at most 10 - what the database accepts as a prefix. */
+export function normalisePrefix(raw: string): string {
+  return (raw || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 10)
+}
+
+export function isValidPrefix(prefix: string): boolean {
+  return /^[A-Z0-9]{3,10}$/.test(prefix)
+}
 export const MAX_LETTERS = 6
 export const MAX_DIGITS = 8
 
@@ -36,12 +47,12 @@ export function normaliseProductCode(code: string): string {
   return (code || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
 }
 
-export function codePrefixFor(productCode: string): string {
-  return `${CODE_PREFIX}-${normaliseProductCode(productCode) || DEFAULT_PRODUCT_CODE}-`
+export function codePrefixFor(productCode: string, prefix: string = CODE_PREFIX): string {
+  return `${prefix || CODE_PREFIX}-${normaliseProductCode(productCode) || DEFAULT_PRODUCT_CODE}-`
 }
 
 export function sampleCode(productCode: string, format: CodeFormat = DEFAULT_CODE_FORMAT): string {
-  return `${codePrefixFor(productCode)}${serialSample(format)}`
+  return `${codePrefixFor(productCode, format.prefix)}${serialSample(format)}`
 }
 
 /** Renders a code as a standalone SVG string, sized by the caller's CSS. */
