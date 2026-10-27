@@ -184,9 +184,18 @@ exact label is shown before generating.
 
 **Codes are issued in ascending serial order and are never reused.** The order
 runs `AAA001 → AAA999 → AAB001 → …`, giving 17,558,424 codes per product
-line (26³ letter blocks × 999 numbers); the database refuses to issue past that
-rather than repeat. Each product line keeps its own series (`RZCIR-BEDS-AAA001`
-starts fresh). Scans and registration only require the `RZCIR` prefix, so a label
+line at the default 3 + 3 format (26³ letter blocks × 999 numbers); the database
+refuses to issue past the end of a format's range rather than repeat. Each product
+line keeps its own series (`RZCIR-BEDS-AAA001` starts fresh).
+
+**The format is a setting.** `app_settings.code_format` = `{"letters":3,"digits":3}`,
+changed by an admin under QR labels → *Code format* (`admin_set_code_format`:
+1–6 letters, 1–8 digits, at least 10,000 codes). It applies to labels generated
+from then on; existing labels are untouched and still scan. Every format keeps its
+own counter in `code_counters` (key e.g. `RZCIR-MVN191-3x3`, `RZCIR-MVN191-4x4`), so
+a new format starts at `…001`, and returning to an old one resumes where it stopped.
+Codes of different shapes cannot be equal, so nothing is ever reissued. The `RZCIR`
+prefix is not configurable: scanning and registration check for it. Scans and registration only require the `RZCIR` prefix, so a label
 in the earlier 4-letter / 4-digit format is still recognised.
 
 The counter lives in `public.code_counters`, not in the products table, which is
@@ -306,7 +315,8 @@ enforcement point reads from it.
 **Existing labels are migrated whenever the format changes**, so nothing in the
 field is orphaned: `SYN-100023` → `RZCIR-CURT-100023` → serial format →
 `RZCIR-MVN191-AAAA0001` → `RZCIR-MVN191-AAA001` (27 Oct 2026, when the database
-held no labels, so the counter restarted at zero). Earlier migrations kept
+held no labels, so the counter restarted at zero); since then the format is an
+admin setting rather than a migration. Earlier migrations kept
 history intact and carried the serial counter across.
 
 ## 4. Security

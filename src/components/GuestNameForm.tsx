@@ -46,7 +46,7 @@ export default function GuestNameForm({
           autoComplete="name"
           autoCapitalize="words"
           maxLength={MAX_GUEST_NAME}
-          placeholder="e.g. Sam Patel"
+          placeholder="e.g. A. N. Other"
           required
         />
       </div>

@@ -3,13 +3,18 @@ import { supabase, friendlyError } from '../lib/supabase'
 import { Card, EmptyState, Field, SectionTitle, Spinner, useToast } from '../components/ui'
 import QrLabel from '../components/QrLabel'
 import {
+  DEFAULT_CODE_FORMAT,
   DEFAULT_PRODUCT_CODE,
+  MAX_DIGITS,
+  MAX_LETTERS,
+  codeCapacity,
   codePrefixFor,
   normaliseProductCode,
   qrSvg,
   qrSvgMany,
   responsiveSvg,
   sampleCode,
+  type CodeFormat,
 } from '../lib/qr'
 import { downloadCsv, toCsv } from '../lib/csv'
 import { formatDate } from '../lib/format'
@@ -41,16 +46,56 @@ export default function LabelsPage() {
 
   const prefix = useMemo(() => codePrefixFor(productCode), [productCode])
 
+  // The code format: what is saved, and what is being edited on this screen.
+  const [saved, setSaved] = useState<CodeFormat>(DEFAULT_CODE_FORMAT)
+  const [draft, setDraft] = useState<CodeFormat>(DEFAULT_CODE_FORMAT)
+  const [savingFormat, setSavingFormat] = useState(false)
+  const dirty = draft.letters !== saved.letters || draft.digits !== saved.digits
+  const capacity = codeCapacity(draft)
+  const tooSmall = capacity < 10000n
+
+  useEffect(() => {
+    void supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'code_format')
+      .maybeSingle()
+      .then(({ data }) => {
+        const v = data?.value as Partial<CodeFormat> | undefined
+        if (v?.letters && v?.digits) {
+          const f = { letters: v.letters, digits: v.digits }
+          setSaved(f)
+          setDraft(f)
+        }
+      })
+  }, [])
+
+  const saveFormat = async () => {
+    if (!dirty || tooSmall || savingFormat) return
+    setSavingFormat(true)
+    const { error } = await supabase.rpc('admin_set_code_format', {
+      p_letters: draft.letters,
+      p_digits: draft.digits,
+    })
+    setSavingFormat(false)
+    if (error) {
+      toast('error', friendlyError(error))
+      return
+    }
+    setSaved(draft)
+    toast('success', `Code format saved — new labels look like ${sampleCode(productCode, draft)}`)
+  }
+
   // Keep the format preview in step with whatever product code is typed.
   useEffect(() => {
     let cancelled = false
-    void qrSvg(sampleCode(productCode)).then((s) => {
+    void qrSvg(sampleCode(productCode, draft)).then((s) => {
       if (!cancelled) setSampleSvg(responsiveSvg(s))
     })
     return () => {
       cancelled = true
     }
-  }, [productCode])
+  }, [productCode, draft])
 
   const loadRecent = useCallback(async () => {
     const { data } = await supabase
@@ -132,6 +177,9 @@ export default function LabelsPage() {
         toast('error', 'Allow pop-ups for this site to print the label sheet.')
         return
       }
+      // 5.4pt fits a 21-character code under a 24 mm QR; shrink for anything longer.
+      const longest = Math.max(...generated.map((g) => g.qr_code.length))
+      const captionPt = Math.min(5.4, (5.4 * 21) / longest).toFixed(2)
       const cells = generated
         .map(
           (g) => `<figure class="l"><div class="q">${all.get(g.qr_code) ?? ''}</div><figcaption>${g.qr_code}</figcaption></figure>`,
@@ -151,7 +199,7 @@ export default function LabelsPage() {
        page-break-inside: avoid; break-inside: avoid; }
   .q { width: 24mm; height: 24mm; }
   .q svg { display: block; width: 100%; height: 100%; }
-  figcaption { margin-top: 1mm; font-size: 5.4pt; letter-spacing: 0.02em;
+  figcaption { margin-top: 1mm; font-size: ${captionPt}pt; letter-spacing: 0.02em;
                font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
   @media screen { body { padding: 12mm; background: #f4f7f7; } .sheet { background: #fff; padding: 8mm; } }
 </style></head><body><div class="sheet">${cells}</div>
@@ -277,11 +325,12 @@ export default function LabelsPage() {
           <span className="step-num">2</span> Check the format
         </SectionTitle>
         <div className="label-preview">
-          <QrLabel code={sampleCode(productCode)} svg={sampleSvg} />
+          <QrLabel code={sampleCode(productCode, draft)} svg={sampleSvg} />
           <div className="label-preview-note">
             <p>
-              Codes look like <code>{prefix}AAA001</code> — a fixed <strong>RZCIR</strong> prefix,
-              the product code, then three letters and three digits.
+              Codes look like <code>{sampleCode(productCode, draft)}</code> — a fixed <strong>RZCIR</strong>{' '}
+              prefix, the product code, then {draft.letters} letter{draft.letters === 1 ? '' : 's'} and{' '}
+              {draft.digits} digit{draft.digits === 1 ? '' : 's'}.
             </p>
             <p className="muted">
               Codes are issued in ascending serial order and reserved as they are generated. A number
@@ -290,13 +339,69 @@ export default function LabelsPage() {
           </div>
         </div>
 
+        <div className="format-edit">
+          <h3>Code format</h3>
+          <div className="form-grid">
+            <Field label="Letters" htmlFor="fmt-letters">
+              <select
+                id="fmt-letters"
+                className="input"
+                value={draft.letters}
+                onChange={(e) => setDraft({ ...draft, letters: Number(e.target.value) })}
+              >
+                {Array.from({ length: MAX_LETTERS }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Digits" htmlFor="fmt-digits">
+              <select
+                id="fmt-digits"
+                className="input"
+                value={draft.digits}
+                onChange={(e) => setDraft({ ...draft, digits: Number(e.target.value) })}
+              >
+                {Array.from({ length: MAX_DIGITS }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <p className={tooSmall ? 'form-error' : 'muted'}>
+            {tooSmall
+              ? `Only ${capacity.toLocaleString('en-GB')} codes per product — choose a longer format.`
+              : `Room for ${capacity.toLocaleString('en-GB')} codes per product.`}
+          </p>
+          <p className="muted">
+            A new format applies to labels generated from now on. Labels already printed keep working, and
+            each format counts up from {sampleCode(productCode, draft).slice(prefix.length)} on its own, so no
+            code is ever issued twice.
+          </p>
+          <button
+            type="button"
+            className="btn btn-ghost btn-block"
+            onClick={() => void saveFormat()}
+            disabled={!dirty || tooSmall || savingFormat}
+          >
+            {savingFormat ? 'Saving…' : dirty ? 'Save this format' : 'Format is saved'}
+          </button>
+        </div>
+
         <button
           type="button"
           className="btn btn-primary btn-lg btn-block"
           onClick={() => void generate()}
-          disabled={busy || normaliseProductCode(productCode).length < 2}
+          disabled={busy || dirty || normaliseProductCode(productCode).length < 2}
         >
-          {busy ? 'Generating…' : `Generate ${count} label${count === 1 ? '' : 's'}`}
+          {busy
+            ? 'Generating…'
+            : dirty
+              ? 'Save the new format first'
+              : `Generate ${count} label${count === 1 ? '' : 's'}`}
         </button>
       </Card>
 

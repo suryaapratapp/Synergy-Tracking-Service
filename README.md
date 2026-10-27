@@ -90,14 +90,24 @@ the site and product lists). Details: [docs/HANDOVER.md](docs/HANDOVER.md#workin
 
 Admins generate label codes under **QR labels** in the fixed format
 `RZCIR-<product code>-AAA999` — e.g. `RZCIR-MVN191-AAA001`, a product
-code then three letters and three digits. Up to 500 per click; download the CSV for a label
+code then three letters and three digits (the default; an admin can change how
+many letters and digits on the same screen — see below). Up to 500 per click; download the CSV for a label
 printer, or print a sheet of 28 × 34 mm labels with the code in small type under
 each QR.
 
 Codes are issued in **ascending serial order** and are **never reused** — the
 counter is held separately from the products table, so deleting a product (or
 wiping the demo data) does not free its number. Each product line has its own
-series, and about 17.5 million codes per line.
+series, and about 17.5 million codes per line at the default format.
+
+**Changing the format.** Under *QR labels → Code format* an admin picks 1–6 letters
+and 1–8 digits; the preview and the number of codes it allows update as you choose
+(formats allowing fewer than 10,000 are refused). A new format applies to labels
+generated from then on — labels already printed keep working, because scanning only
+requires the `RZCIR` prefix. Each format has its own numbering that starts at
+`…001`, so switching to 4 + 4 begins at `AAAA0001`, and switching back resumes
+where 3 + 3 stopped. Codes of different shapes can never be equal, so nothing is
+ever issued twice. The `RZCIR` prefix itself is fixed.
 
 ## How scanning works
 

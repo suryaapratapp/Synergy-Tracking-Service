@@ -1223,3 +1223,6 @@ button.stat:hover { background: var(--raised); }
 
 .pin-set { margin: 16px 0; padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
 .pin-set h3 { margin: 0; font-size: 0.95rem; }
+
+.format-edit { margin: 16px 0; padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.format-edit h3 { margin: 0; font-size: 0.95rem; }
