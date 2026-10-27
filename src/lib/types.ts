@@ -1,10 +1,11 @@
-export type UserRole = 'admin' | 'synergy' | 'synergy_field' | 'hospital'
+export type UserRole = 'admin' | 'synergy' | 'synergy_field' | 'hospital' | 'guest'
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Administrator',
   synergy: 'Synergy',
   synergy_field: 'Synergy field',
   hospital: 'Hospital',
+  guest: 'Guest',
 }
 
 export const ROLE_HELP: Record<UserRole, string> = {
@@ -12,6 +13,7 @@ export const ROLE_HELP: Record<UserRole, string> = {
   synergy: 'All sites and all products, including reports',
   synergy_field: 'All sites for install and take-down work, without reports',
   hospital: 'One hospital only — its own products and installations',
+  guest: 'Install and take down only, under a typed name',
 }
 export type ItemStatus = 'registered' | 'in_use' | 'removed' | 'retired'
 export type RemovalReason = 'expired' | 'soiled' | 'damage'

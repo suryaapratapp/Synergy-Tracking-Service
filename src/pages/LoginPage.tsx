@@ -2,21 +2,44 @@ import { useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { APP_NAME, APP_TAGLINE, DEVELOPER } from '../lib/branding'
 import PasswordInput from '../components/PasswordInput'
+import BrandMark from '../components/BrandMark'
+import GuestNameForm from '../components/GuestNameForm'
+
+type Mode = 'guest' | 'staff'
+const MODE_KEY = 'tex-trak.loginMode'
+
+function initialMode(): Mode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'staff' ? 'staff' : 'guest'
+  } catch {
+    return 'guest'
+  }
+}
 
 export default function LoginPage() {
-  const { signIn } = useAuth()
+  const { signIn, signInAsGuest } = useAuth()
+  const [mode, setModeState] = useState<Mode>(initialMode)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  const setMode = (m: Mode) => {
+    setModeState(m)
+    setError(null)
+    try {
+      localStorage.setItem(MODE_KEY, m)
+    } catch {
+      /* remembering the tab is a nicety */
+    }
+  }
+
+  const run = async (job: () => Promise<void>) => {
     if (busy) return
     setBusy(true)
     setError(null)
     try {
-      await signIn(username, password)
+      await job()
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -24,61 +47,98 @@ export default function LoginPage() {
     }
   }
 
+  const onStaffSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    void run(() => signIn(username, password))
+  }
+
   return (
     <div className="login">
       <div className="login-card">
         <div className="login-brand">
+          <BrandMark size={60} />
           <h1>{APP_NAME}</h1>
           <p>{APP_TAGLINE}</p>
         </div>
 
-        <form onSubmit={onSubmit} className="login-form">
-          <div className="field">
-            <label className="field-label" htmlFor="username">
-              Username
-            </label>
-            <input
-              id="username"
-              className="input"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              required
-              placeholder="e.g. admin"
-            />
-          </div>
-
-          <div className="field">
-            <label className="field-label" htmlFor="password">
-              Password
-            </label>
-            <PasswordInput
-              id="password"
-              value={password}
-              onChange={setPassword}
-              autoComplete="current-password"
-              required
-            />
-          </div>
-
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
+        <div className="login-tabs" role="tablist" aria-label="How do you want to sign in?">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'guest'}
+            className={mode === 'guest' ? 'login-tab login-tab-on' : 'login-tab'}
+            onClick={() => setMode('guest')}
+          >
+            Guest
           </button>
-        </form>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'staff'}
+            className={mode === 'staff' ? 'login-tab login-tab-on' : 'login-tab'}
+            onClick={() => setMode('staff')}
+          >
+            Staff login
+          </button>
+        </div>
 
-        <p className="login-help">
-          Access is by secure role-based login only. Contact your administrator if you need an account.
-        </p>
+        {mode === 'guest' ? (
+          <>
+            <div className="login-lead">
+              <h2>Who&rsquo;s working today?</h2>
+              <p>Type your name and start installing or taking down.</p>
+            </div>
+            <GuestNameForm busy={busy} error={error} onSubmit={(name) => void run(() => signInAsGuest(name))} />
+          </>
+        ) : (
+          <form onSubmit={onStaffSubmit} className="login-form">
+            <div className="field">
+              <label className="field-label" htmlFor="username">
+                Username
+              </label>
+              <input
+                id="username"
+                className="input input-lg"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                required
+                placeholder="e.g. admin"
+              />
+            </div>
+
+            <div className="field">
+              <label className="field-label" htmlFor="password">
+                Password
+              </label>
+              <PasswordInput
+                id="password"
+                value={password}
+                onChange={setPassword}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
+              {busy ? 'Signing in…' : 'Sign in'}
+            </button>
+
+            <p className="login-help">
+              For Synergy, hospital and admin accounts. Contact your administrator if you need one.
+            </p>
+          </form>
+        )}
       </div>
 
       <p className="credit">{DEVELOPER}</p>

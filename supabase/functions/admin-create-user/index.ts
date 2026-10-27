@@ -29,7 +29,7 @@ function cors(req: Request) {
   }
 }
 
-const ROLES = new Set(['admin', 'synergy', 'synergy_field', 'hospital'])
+const ROLES = new Set(['admin', 'synergy', 'synergy_field', 'hospital', 'guest'])
 const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/
 
 Deno.serve(async (req: Request) => {

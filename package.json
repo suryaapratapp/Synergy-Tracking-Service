@@ -3,14 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Tex-Trak — product lifecycle tracking for healthcare environments. Developed by CIRCAI Ltd.",
+  "description": "Tex-Trak \u2014 product lifecycle tracking for healthcare environments. Developed by CIRCAI Ltd.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 4173",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "8.5.3",
     "@supabase/supabase-js": "2.112.2",
     "jsqr": "1.4.0",
     "qrcode": "1.5.4",
@@ -19,6 +22,8 @@
     "react-router-dom": "7.18.2"
   },
   "devDependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/cli": "8.5.3",
     "@types/qrcode": "1.5.5",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",

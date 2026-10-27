@@ -25,3 +25,17 @@ const FALLBACK_ANON_KEY = 'sb_publishable_ITKkHrBMzHOe5JUT3RzFqQ_PZCSztRu'
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim() || FALLBACK_URL
 export const SUPABASE_ANON_KEY =
   import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || FALLBACK_ANON_KEY
+
+/**
+ * The shared guest login behind "Continue as guest". A fitter types their name
+ * and is signed in as this account, which can only install and take down - it
+ * cannot see the overview, products or reports, and cannot change anything
+ * else (enforced in the database, not just hidden in the interface).
+ *
+ * Like the publishable key above this ships in the bundle by design, so it is
+ * not a secret. To switch guest access off, deactivate the "guest" user under
+ * Users & settings; to rotate it, change the password in Supabase Auth and
+ * here, then ship a new build.
+ */
+export const GUEST_USERNAME = 'guest'
+export const GUEST_PASSWORD = 'vlF3Q9I5x6r00YDRpTwj75NCVXwl'

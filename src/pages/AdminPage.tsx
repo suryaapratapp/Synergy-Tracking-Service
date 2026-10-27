@@ -113,7 +113,7 @@ export default function AdminPage() {
                 <button type="button" className="user-row" onClick={() => setEditing(u)}>
                   <span className="user-main">
                     <span className="user-name">
-                      {u.full_name ?? u.username}
+                      {u.role === 'guest' ? 'Guest login (shared)' : (u.full_name ?? u.username)}
                       {u.id === me?.id && <em> (you)</em>}
                     </span>
                     <span className="user-email">@{u.username}</span>
@@ -141,7 +141,31 @@ export default function AdminPage() {
       />
 
       <Sheet open={!!editing} title="Edit user" onClose={() => setEditing(null)}>
-        {editing && (
+        {editing && editing.role === 'guest' && (
+          <>
+            <p className="sheet-lead">
+              <strong>Guest access</strong> is the shared login behind &ldquo;Continue as guest&rdquo;. Anyone who types
+              a name can install and take down products with it &mdash; nothing else.
+            </p>
+            <label className="switch-row">
+              <input
+                type="checkbox"
+                checked={editing.active}
+                onChange={(e) => setEditing({ ...editing, active: e.target.checked })}
+              />
+              <span>Guest access is switched on</span>
+            </label>
+            <p className="muted">Switching it off stops guests working straight away, including anyone already signed in.</p>
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              onClick={() => void updateUser(editing.id, { active: editing.active })}
+            >
+              Save
+            </button>
+          </>
+        )}
+        {editing && editing.role !== 'guest' && (
           <>
             <p className="sheet-lead">
               <span className="muted">Added {formatDate(editing.created_at)}</span>

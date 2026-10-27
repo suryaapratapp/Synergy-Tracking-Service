@@ -17,7 +17,7 @@ Usernames are `admin`, `synergy`, `synergy2`, and one per hospital. **Passwords
 are not recorded here** — see `CREDENTIALS.local.md` on the delivery machine, or
 ask the administrator.
 
-### The four roles
+### The five roles
 
 | Role | Sees | Reports |
 |---|---|---|
@@ -25,6 +25,7 @@ ask the administrator.
 | **Synergy** | All sites and all products | Yes |
 | **Synergy field** | All sites — install, take down, register, locations | **No** |
 | **Hospital** | Its own hospital only | Yes, scoped to that site |
+| **Guest** | Install and take down at any site, under a typed name | No |
 
 **Synergy field** is for team members who do the fitting work but should not be
 shown the reporting side. It is identical to Synergy in every other respect: the
@@ -42,6 +43,35 @@ Reports is removed from the navigation and the `/reports` address redirects home
 > The Products screen still offers its CSV export to this role. I left it alone
 > because you asked specifically about Reports — one line to remove it if you
 > would rather they could not export either.
+
+### Guest access (for fitters)
+
+The sign-in screen opens on **Guest**: a fitter types their name and is working
+straight away, with no username or password. Under the hood this is one shared
+account, `guest`, whose role can do exactly two things — **install** and
+**take down** (including the one-scan swap). The overview, products, reports,
+labels, locations and settings are refused by the database, not just hidden:
+the dashboard and count functions raise *"Guests cannot view the overview"*, and
+every write other than install / take-down is blocked by row level security.
+
+- **Who did it:** the typed name is sent with each install / take-down and stored
+  with it (`installations.installed_by_label` / `removed_by_label`, and in the
+  event log). Products and history screens show it wherever an installer or
+  remover is named. A guest action with no name is rejected.
+- **Home screen:** staff see four big buttons — Dashboard, Install, Take down,
+  Products. A guest sees the same four, with Dashboard and Products locked.
+- **Switch it off:** Users & settings → *Guest login (shared)* → untick *Guest
+  access is switched on*. Takes effect immediately, including for guests who are
+  already signed in.
+- **Trade-off to be aware of:** the guest password is compiled into the app
+  (`src/lib/config.ts`) — it has to be, for sign-in to need no typing — so anyone
+  who has the app or the public repository can use guest access. That is the
+  intended convenience, and it is why the guest role is limited as above; but a
+  guest can still read and change installation records at every site. If that is
+  too open for production, switch guest access off, or ask for it to be scoped to
+  a PIN or a single site. To rotate the password, change it in Supabase Auth and
+  in `config.ts`, then ship a new build.
+- A guest's name lives on the device. Signing out (or **Exit**) clears it.
 
 Supabase Auth is email-keyed underneath, so each account carries a deterministic
 internal address `<username>@synergy.local`. Nothing is ever sent to it — it is
@@ -217,6 +247,7 @@ serial counter across so numbering continues rather than restarting.
   hospital filter it is not entitled to.
 - Only Synergy and Admin can register products or import locations.
 - Only Admin can create accounts or change roles.
+- The shared Guest login can install and take down only; everything else is refused in the database (see *Guest access* above).
 
 **Outstanding:** enable *Leaked password protection* in
 Supabase → Authentication → Policies. It is off by default and checks new
@@ -224,21 +255,23 @@ passwords against HaveIBeenPwned. Worth switching on once real passwords are set
 
 ## 5. Demo data
 
-The database is seeded with a working demonstration set: 3 hospitals, 16 wards,
-49 bays, ~560 products and 12 months of installation history.
+**Cleared on 27 Oct 2026.** Every product, QR label, installation, history
+event and stock box was removed, ready for real use. Kept: all logins, the three
+hospitals with their wards and bays (hospital logins point at them), and the
+label serial counter.
 
-Every demo product carries a `DEMO-` batch prefix. To clear it before go-live:
+The counter is deliberately **not** reset. Codes are never reused, so the next
+labels the admin generates carry on from where the demo left off rather than
+repeating a code that a printed test label might still carry. If you are certain
+no test label exists anywhere and want numbering to restart at `AAAA0001`:
 
 ```sql
-delete from public.products where batch like 'DEMO-%';
+update public.code_counters set last_serial = 0;
 ```
 
-Installations and events cascade with the products. Locations are kept — replace
-them by importing Synergy's real CSV, then deleting any placeholder hospitals that
-are not wanted.
-
-The three placeholder hospitals (Queen Mary, St Thomas General, Royal Albert) are
-stand-ins until the real location list arrives.
+The three placeholder hospitals (Queen Mary, St Thomas General, Royal Albert) and
+their wards and bays are stand-ins until Synergy's real location list arrives —
+import it under **Locations**, then remove any placeholders that are not wanted.
 
 ## 6. Hardware notes
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase, friendlyError } from '../lib/supabase'
+import { actorArgs } from '../lib/guest'
 import { useData } from '../context/DataContext'
 import { useHidScanner } from '../hooks/useHidScanner'
 import ScanField from '../components/ScanField'
@@ -131,6 +132,7 @@ export default function TakedownPage() {
       p_installation_ids: chosen.map((r) => r.id),
       p_reason: reason,
       p_notes: notes.trim() || null,
+      ...actorArgs(),
     })
 
     if (error) {
@@ -161,6 +163,7 @@ export default function TakedownPage() {
       p_qr_codes: [code],
       p_reason: reason,
       p_notes: notes.trim() || null,
+      ...actorArgs(),
     })
     if (error) {
       toast('error', friendlyError(error))
@@ -183,6 +186,7 @@ export default function TakedownPage() {
     const { data, error } = await supabase.rpc('rpc_install_replacement', {
       p_qr_code: code,
       p_replaces_installation_id: target.installationId,
+      ...actorArgs(),
     })
     if (error) {
       const msg = friendlyError(error)

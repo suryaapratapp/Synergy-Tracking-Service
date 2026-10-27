@@ -49,10 +49,17 @@ and both set the SPA rewrite plus caching and security headers, so a straight
 Serve over **HTTPS** — the camera scanner will not start on plain HTTP (localhost
 excepted), and the PWA will not install.
 
+## Android app
+
+The same interface is packaged as an installable Android app with Capacitor — see
+[docs/ANDROID.md](docs/ANDROID.md) to build, install and publish it.
+
 ## Roles
 
-Staff sign in with a **username** (`admin`, `synergy`, `queenmary`, …), not an
-email address.
+Fitters can tap **Guest**, type their name and start straight away. Staff sign in
+with a **username** (`admin`, `synergy`, `queenmary`, …), not an email address.
+Either way the home screen is four big buttons: Dashboard, Install, Take down and
+Products.
 
 | Role | Sees | Can do |
 |---|---|---|
@@ -60,6 +67,7 @@ email address.
 | **Synergy** | All sites and all products | Register labels, install, take down, import locations, report |
 | **Synergy field** | All sites and all products | The same, but **without Reports** — for team members who do the fitting work only |
 | **Hospital** | Only its own hospital | Install, take down and report for that site |
+| **Guest** | Install and take down at any site | Type a name and go — no password. Nothing else: the overview, products and reports are refused by the database |
 
 Scoping is enforced in the database (row level security), not just the interface:
 a hospital login cannot read another hospital's data even by calling the API

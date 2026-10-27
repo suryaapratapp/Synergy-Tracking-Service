@@ -47,7 +47,12 @@ try {
   showStartupError(err instanceof Error ? err.message : String(err))
 }
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// The installed Android app ships its own copy of the interface, so the web
+// build's offline cache is unnecessary there - and a stale one could outlive
+// an app update.
+const insideNativeApp = !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
+
+if ('serviceWorker' in navigator && import.meta.env.PROD && !insideNativeApp) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
       /* the app works fine without offline support */

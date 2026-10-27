@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase, friendlyError } from '../lib/supabase'
 import { useData } from '../context/DataContext'
+import { useAuth } from '../context/AuthContext'
 import { useHidScanner } from '../hooks/useHidScanner'
 import ScanField from '../components/ScanField'
 import LocationPicker, { EMPTY_LOCATION, type LocationSelection } from '../components/LocationPicker'
 import { Card, EmptyState, SectionTitle, useToast } from '../components/ui'
 import { formatDate } from '../lib/format'
+import { actorArgs } from '../lib/guest'
 import { describeBay, selectionForBay, takeDownHereUrl } from '../lib/location'
 import type { InstallationView, ProductView } from '../lib/types'
 
@@ -35,6 +37,7 @@ interface BayStatus {
  */
 export default function InstallPage() {
   const { bay, reload, loading: locationsLoading } = useData()
+  const { isGuest } = useAuth()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
 
@@ -139,11 +142,13 @@ export default function InstallPage() {
             p_qr_code: code,
             p_replaces_installation_id: replacing.installationId,
             p_due_days: due,
+            ...actorArgs(),
           })
         : await supabase.rpc('rpc_install_product', {
             p_qr_code: code,
             p_bay_id: location.bayId,
             p_due_days: due,
+            ...actorArgs(),
           })
 
       if (error) {
@@ -306,13 +311,23 @@ export default function InstallPage() {
           <ul className="result-list">
             {done.map((p) => (
               <li key={p.installation_id ?? p.id}>
-                <Link to={`/inventory/${p.id}`} className="result-row">
-                  <span className="result-code">{p.qr_code}</span>
-                  <span className="result-meta">
-                    {p.ward_name} · {p.bay_name}
-                  </span>
-                  <span className="badge badge-due-ok">Due {formatDate(p.due_date)}</span>
-                </Link>
+                {isGuest ? (
+                  <div className="result-row">
+                    <span className="result-code">{p.qr_code}</span>
+                    <span className="result-meta">
+                      {p.ward_name} · {p.bay_name}
+                    </span>
+                    <span className="badge badge-due-ok">Due {formatDate(p.due_date)}</span>
+                  </div>
+                ) : (
+                  <Link to={`/inventory/${p.id}`} className="result-row">
+                    <span className="result-code">{p.qr_code}</span>
+                    <span className="result-meta">
+                      {p.ward_name} · {p.bay_name}
+                    </span>
+                    <span className="badge badge-due-ok">Due {formatDate(p.due_date)}</span>
+                  </Link>
+                )}
               </li>
             ))}
           </ul>

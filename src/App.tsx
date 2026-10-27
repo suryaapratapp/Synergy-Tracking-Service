@@ -5,6 +5,8 @@ import AppShell from './components/AppShell'
 import { Spinner } from './components/ui'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import HomePage from './pages/HomePage'
+import GuestNamePrompt from './pages/GuestNamePrompt'
 
 const InstallPage = lazy(() => import('./pages/InstallPage'))
 const TakedownPage = lazy(() => import('./pages/TakedownPage'))
@@ -18,12 +20,21 @@ const LabelsPage = lazy(() => import('./pages/LabelsPage'))
 const AccountPage = lazy(() => import('./pages/AccountPage'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { session, profile, loading } = useAuth()
+  const { session, profile, loading, isGuest, guestName } = useAuth()
   const location = useLocation()
 
   if (loading) return <FullPageSpinner />
   if (!session) return <Navigate to="/login" state={{ from: location }} replace />
   if (!profile) return <FullPageSpinner />
+  // A guest session with no name on this device (cleared storage) must say who they are first.
+  if (isGuest && !guestName) return <GuestNamePrompt />
+  return <>{children}</>
+}
+
+/** Overview, products, reports and the rest are for named accounts, not guests. */
+function RequireStaff({ children }: { children: ReactNode }) {
+  const { isStaff } = useAuth()
+  if (!isStaff) return <Navigate to="/" replace />
   return <>{children}</>
 }
 
@@ -68,12 +79,41 @@ export default function App() {
             <AppShell>
               <Suspense fallback={<FullPageSpinner />}>
                 <Routes>
-                  <Route path="/" element={<DashboardPage />} />
+                  <Route path="/" element={<HomePage />} />
                   <Route path="/install" element={<InstallPage />} />
                   <Route path="/takedown" element={<TakedownPage />} />
-                  <Route path="/inventory" element={<InventoryPage />} />
-                  <Route path="/inventory/:id" element={<ProductDetailPage />} />
-                  <Route path="/account" element={<AccountPage />} />
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <RequireStaff>
+                        <DashboardPage />
+                      </RequireStaff>
+                    }
+                  />
+                  <Route
+                    path="/inventory"
+                    element={
+                      <RequireStaff>
+                        <InventoryPage />
+                      </RequireStaff>
+                    }
+                  />
+                  <Route
+                    path="/inventory/:id"
+                    element={
+                      <RequireStaff>
+                        <ProductDetailPage />
+                      </RequireStaff>
+                    }
+                  />
+                  <Route
+                    path="/account"
+                    element={
+                      <RequireStaff>
+                        <AccountPage />
+                      </RequireStaff>
+                    }
+                  />
                   <Route
                     path="/reports"
                     element={

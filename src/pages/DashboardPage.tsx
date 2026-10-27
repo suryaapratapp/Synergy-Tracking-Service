@@ -53,7 +53,7 @@ export default function DashboardPage() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Overview</h1>
+          <h1>Dashboard</h1>
           <p className="page-sub">
             {profile?.role === 'hospital'
               ? 'Your site at a glance'
@@ -78,17 +78,6 @@ export default function DashboardPage() {
             ))}
           </select>
         )}
-      </div>
-
-      <div className="quick-actions">
-        <button type="button" className="quick quick-install" onClick={() => navigate('/install')}>
-          <span className="quick-title">Install</span>
-          <span className="quick-sub">Scan a label and fit it</span>
-        </button>
-        <button type="button" className="quick quick-takedown" onClick={() => navigate('/takedown')}>
-          <span className="quick-title">Take down</span>
-          <span className="quick-sub">Scan the old one, hang the new one</span>
-        </button>
       </div>
 
       <div className="stat-grid">
