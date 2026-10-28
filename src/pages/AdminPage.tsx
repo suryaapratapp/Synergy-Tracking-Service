@@ -162,8 +162,8 @@ export default function AdminPage() {
         {editing && editing.role === 'guest' && (
           <>
             <p className="sheet-lead">
-              <strong>Guest access</strong> is the shared login behind &ldquo;Continue as guest&rdquo;. Anyone who types
-              a name can install and take down products with it &mdash; nothing else.
+              <strong>Guest access</strong> is the shared login on the sign-in screen&rsquo;s Guest tab. Anyone who has the PIN
+              can type a name and install and take down products &mdash; nothing else.
             </p>
             <label className="switch-row">
               <input

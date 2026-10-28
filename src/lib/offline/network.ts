@@ -57,6 +57,28 @@ function startProbing() {
   }, PROBE_EVERY_MS)
 }
 
+/** One quick check of whether the server can be reached right now (used when no request is in flight to tell us). */
+export async function checkNow(): Promise<void> {
+  if (navigator.onLine === false) {
+    reportNetwork(false)
+    return
+  }
+  try {
+    await withTimeout(
+      (signal) =>
+        deviceFetch(`${SUPABASE_URL}/auth/v1/health`, {
+          headers: { apikey: SUPABASE_ANON_KEY },
+          cache: 'no-store',
+          signal,
+        }),
+      4000,
+    )
+    reportNetwork(true)
+  } catch {
+    reportNetwork(false)
+  }
+}
+
 /** For screens: true while the app believes it can reach the server. */
 export function useNetworkUsable(): boolean {
   return useSyncExternalStore(

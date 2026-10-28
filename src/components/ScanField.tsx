@@ -31,7 +31,7 @@ export default function ScanField({
   onSubmit,
   hardwareSeen = false,
   label = 'Scan or type the code',
-  placeholder = 'e.g. RZCIR-MVN191-AAA001',
+  placeholder = 'Scan, or type the code',
   busy = false,
   autoFocus = false,
   disabled = false,

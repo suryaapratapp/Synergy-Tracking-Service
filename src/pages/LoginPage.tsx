@@ -1,11 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { APP_NAME, APP_TAGLINE, DEVELOPER } from '../lib/branding'
 import PasswordInput from '../components/PasswordInput'
 import BrandMark from '../components/BrandMark'
 import GuestNameForm from '../components/GuestNameForm'
 import { useSyncState } from '../lib/offline/queue'
-import { useNetworkUsable } from '../lib/offline/network'
+import { checkNow, useNetworkUsable } from '../lib/offline/network'
 
 type Mode = 'guest' | 'staff'
 const MODE_KEY = 'tex-trak.loginMode'
@@ -22,6 +22,11 @@ export default function LoginPage() {
   const { signIn, signInAsGuest } = useAuth()
   const sync = useSyncState()
   const online = useNetworkUsable()
+
+  // No request is in flight here to tell us the signal is gone, so ask once.
+  useEffect(() => {
+    void checkNow()
+  }, [])
   const [mode, setModeState] = useState<Mode>(initialMode)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')

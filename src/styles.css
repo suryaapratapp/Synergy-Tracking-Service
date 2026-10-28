@@ -521,7 +521,7 @@ select.input {
   background: var(--brand-wash); border: 1px solid var(--brand-tint);
 }
 .result-code { font-weight: 650; font-variant-numeric: tabular-nums; }
-.result-meta { font-size: 0.82rem; color: var(--ink-3); flex: 1; min-width: 0; }
+.result-meta { font-size: 0.82rem; color: var(--ink-3); flex: 1 1 150px; min-width: 150px; }
 
 .product-list li + li, .user-list li + li { border-top: 1px solid var(--border); }
 .product-row, .user-row {
@@ -1072,6 +1072,8 @@ button.stat:hover { background: var(--raised); }
   padding: 0 14px; margin-top: -42px;
   max-width: 1000px; width: 100%; align-self: center;
 }
+
+.home > .ready-card { margin: 14px 14px 0; align-self: stretch; max-width: 1000px; width: calc(100% - 28px); align-self: center; }
 
 .home-tile {
   --t1: #14a091; --t2: #0b6b62;
