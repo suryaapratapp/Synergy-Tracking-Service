@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, friendlyError } from '../lib/supabase'
 import { Card, EmptyState, Field, SectionTitle, Spinner, useToast } from '../components/ui'
 import QrLabel from '../components/QrLabel'
@@ -24,7 +24,15 @@ import { formatDate } from '../lib/format'
 import type { ProductView } from '../lib/types'
 
 const PREVIEW_LIMIT = 24
-const QUANTITIES = [10, 50, 100, 250, 500]
+/** The most labels one run can ask for. */
+const MAX_LABELS = 50_000
+const QUANTITIES = [100, 500, 1000, 5000, 10_000, MAX_LABELS]
+/** The database makes at most this many per request (a response carries 1,000 rows), so a big run is made in steps. */
+const STEP = 1000
+/** Labels per printed sheet run: a browser cannot lay out tens of thousands of QR codes at once. */
+const SHEET = 500
+/** Ask before a run this large - the numbers are used up for good. */
+const CONFIRM_FROM = 5000
 
 /**
  * Admin-only label generation. The database mints and reserves each code, so
@@ -36,6 +44,10 @@ export default function LabelsPage() {
   const [productCode, setProductCode] = useState(DEFAULT_PRODUCT_CODE)
   const [productType, setProductType] = useState('Curtain')
   const [count, setCount] = useState(500)
+  const [progress, setProgress] = useState<{ done: number; total: number; kind: 'generate' | 'load' } | null>(null)
+  const stopRef = useRef(false)
+  const [sheet, setSheet] = useState(0)
+  const [loadedBatch, setLoadedBatch] = useState<string | null>(null)
   const [batch, setBatch] = useState('')
   const [size, setSize] = useState('')
   const [colour, setColour] = useState('')
@@ -104,19 +116,14 @@ export default function LabelsPage() {
   }, [productCode, draft])
 
   const loadRecent = useCallback(async () => {
-    const { data } = await supabase
-      .from('products')
-      .select('batch, registered_at')
-      .not('batch', 'is', null)
-      .order('registered_at', { ascending: false })
-      .limit(400)
-    const groups = new Map<string, { n: number; at: string }>()
-    for (const row of (data ?? []) as { batch: string; registered_at: string }[]) {
-      const g = groups.get(row.batch)
-      if (g) g.n += 1
-      else groups.set(row.batch, { n: 1, at: row.registered_at })
-    }
-    setRecent([...groups.entries()].map(([b, g]) => ({ batch: b, ...g })).slice(0, 6))
+    const { data } = await supabase.rpc('rpc_label_batches', { p_limit: 8 })
+    setRecent(
+      ((data ?? []) as { batch: string; n: number; at: string }[]).map((r) => ({
+        batch: r.batch,
+        n: Number(r.n),
+        at: r.at,
+      })),
+    )
   }, [])
 
   useEffect(() => {
@@ -125,31 +132,102 @@ export default function LabelsPage() {
 
   const generate = async () => {
     if (busy) return
+    if (
+      count >= CONFIRM_FROM &&
+      !window.confirm(
+        `Generate ${count.toLocaleString('en-GB')} labels? Their numbers are used up for good, even if you do not print them all.`,
+      )
+    )
+      return
+
+    setBusy(true)
+    stopRef.current = false
+    setGenerated([])
+    setSvgs(new Map())
+    setSheet(0)
+    setLoadedBatch(null)
+    setProgress({ done: 0, total: count, kind: 'generate' })
+
+    // Made in steps: each request is quick, and nothing is ever issued twice
+    // because every step takes its numbers from the database counter.
+    const rows: ProductView[] = []
+    let failure: string | null = null
+    while (rows.length < count && !stopRef.current) {
+      const step = Math.min(STEP, count - rows.length)
+      const { data, error } = await supabase.rpc('rpc_generate_product_codes', {
+        p_product_code: normaliseProductCode(productCode) || DEFAULT_PRODUCT_CODE,
+        p_product_type: productType.trim() || 'Curtain',
+        p_count: step,
+        p_batch: batch.trim() || null,
+        p_size: size.trim() || null,
+        p_colour: colour.trim() || null,
+      })
+      if (error) {
+        failure = friendlyError(error)
+        break
+      }
+      rows.push(...((data ?? []) as ProductView[]))
+      setProgress({ done: rows.length, total: count, kind: 'generate' })
+    }
+
+    setGenerated(rows)
+    setSvgs(await qrSvgMany(rows.slice(0, PREVIEW_LIMIT).map((r) => r.qr_code)))
+    setProgress(null)
+    setBusy(false)
+
+    const made = `${rows.length.toLocaleString('en-GB')} label${rows.length === 1 ? '' : 's'}`
+    if (failure) {
+      toast('error', `Stopped after ${made}: ${failure}`)
+    } else if (rows.length < count) {
+      toast('info', `Stopped after ${made}. Those are saved and ready below.`)
+    } else {
+      toast('success', `${made} generated`)
+    }
+    void loadRecent()
+  }
+
+  /**
+   * Reload an earlier run so it can be exported or printed again. Reads in code
+   * order, each page starting where the last ended - skipping ahead by offset
+   * gets slower with every page and would take minutes for a big run.
+   */
+  const loadBatch = async (name: string, total: number) => {
+    if (busy) return
     setBusy(true)
     setGenerated([])
     setSvgs(new Map())
+    setSheet(0)
+    setProgress({ done: 0, total, kind: 'load' })
 
-    const { data, error } = await supabase.rpc('rpc_generate_product_codes', {
-      p_product_code: normaliseProductCode(productCode) || DEFAULT_PRODUCT_CODE,
-      p_product_type: productType.trim() || 'Curtain',
-      p_count: count,
-      p_batch: batch.trim() || null,
-      p_size: size.trim() || null,
-      p_colour: colour.trim() || null,
-    })
-
-    if (error) {
-      toast('error', friendlyError(error))
-      setBusy(false)
-      return
+    const rows: ProductView[] = []
+    let after = ''
+    let failure: string | null = null
+    for (;;) {
+      let q = supabase
+        .from('products')
+        .select('id,qr_code,product_code,product_type,batch,size,colour,registered_at')
+        .eq('batch', name)
+        .order('qr_code')
+        .limit(STEP)
+      if (after) q = q.gt('qr_code', after)
+      const { data, error } = await q
+      if (error) {
+        failure = friendlyError(error)
+        break
+      }
+      const page = (data ?? []) as ProductView[]
+      rows.push(...page)
+      setProgress({ done: rows.length, total, kind: 'load' })
+      if (page.length < STEP) break
+      after = page[page.length - 1].qr_code
     }
 
-    const rows = (data ?? []) as ProductView[]
+    if (failure) toast('error', failure)
     setGenerated(rows)
     setSvgs(await qrSvgMany(rows.slice(0, PREVIEW_LIMIT).map((r) => r.qr_code)))
-    toast('success', `${rows.length} label${rows.length === 1 ? '' : 's'} generated`)
+    setLoadedBatch(name)
+    setProgress(null)
     setBusy(false)
-    void loadRecent()
   }
 
   const exportCsv = () => {
@@ -166,7 +244,7 @@ export default function LabelsPage() {
       ]),
     )
     downloadCsv(`labels-${prefix.replace(/-$/, '')}-${new Date().toISOString().slice(0, 10)}.csv`, csv)
-    toast('success', `${generated.length} codes exported`)
+    toast('success', `${generated.length.toLocaleString('en-GB')} codes exported`)
   }
 
   /**
@@ -177,16 +255,17 @@ export default function LabelsPage() {
     if (printing) return
     setPrinting(true)
     try {
-      const all = await qrSvgMany(generated.map((g) => g.qr_code))
+      const pageRows = generated.slice(sheet * SHEET, (sheet + 1) * SHEET)
+      const all = await qrSvgMany(pageRows.map((g) => g.qr_code))
       const win = window.open('', '_blank')
       if (!win) {
         toast('error', 'Allow pop-ups for this site to print the label sheet.')
         return
       }
       // 5.4pt fits a 21-character code under a 24 mm QR; shrink for anything longer.
-      const longest = Math.max(...generated.map((g) => g.qr_code.length))
+      const longest = Math.max(...pageRows.map((g) => g.qr_code.length))
       const captionPt = Math.min(5.4, (5.4 * 21) / longest).toFixed(2)
-      const cells = generated
+      const cells = pageRows
         .map(
           (g) => `<figure class="l"><div class="q">${all.get(g.qr_code) ?? ''}</div><figcaption>${g.qr_code}</figcaption></figure>`,
         )
@@ -262,16 +341,20 @@ export default function LabelsPage() {
             />
           </Field>
 
-          <Field label="How many labels?" htmlFor="lbl-count">
+          <Field
+            label="How many labels?"
+            htmlFor="lbl-count"
+            hint={`Up to ${MAX_LABELS.toLocaleString('en-GB')} in one run. Each number is issued once, ever.`}
+          >
             <input
               id="lbl-count"
               className="input"
               type="number"
               min={1}
-              max={500}
+              max={MAX_LABELS}
               inputMode="numeric"
               value={count}
-              onChange={(e) => setCount(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+              onChange={(e) => setCount(Math.max(1, Math.min(MAX_LABELS, Number(e.target.value) || 1)))}
             />
           </Field>
         </div>
@@ -284,7 +367,7 @@ export default function LabelsPage() {
               className={`chip ${count === q ? 'is-active' : ''}`}
               onClick={() => setCount(q)}
             >
-              {q}
+              {q.toLocaleString('en-GB')}
             </button>
           ))}
         </div>
@@ -412,18 +495,34 @@ export default function LabelsPage() {
           </button>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-primary btn-lg btn-block"
-          onClick={() => void generate()}
-          disabled={busy || dirty || prefixBad || normaliseProductCode(productCode).length < 2}
-        >
-          {busy
-            ? 'Generating…'
-            : dirty
+        {progress ? (
+          <div className="gen-progress" role="status">
+            <div className="gen-bar">
+              <span style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} />
+            </div>
+            <p>
+              {progress.kind === 'generate' ? 'Generating…' : 'Loading…'}{' '}
+              <strong>{progress.done.toLocaleString('en-GB')}</strong> of {progress.total.toLocaleString('en-GB')}.
+              Keep this screen open.
+            </p>
+            {progress.kind === 'generate' && (
+              <button type="button" className="btn btn-ghost btn-block" onClick={() => (stopRef.current = true)}>
+                Stop after this step
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary btn-lg btn-block"
+            onClick={() => void generate()}
+            disabled={busy || dirty || prefixBad || normaliseProductCode(productCode).length < 2}
+          >
+            {dirty
               ? 'Save the new format first'
-              : `Generate ${count} label${count === 1 ? '' : 's'}`}
-        </button>
+              : `Generate ${count.toLocaleString('en-GB')} label${count === 1 ? '' : 's'}`}
+          </button>
+        )}
       </Card>
 
       <Card className="step-card step-3">
@@ -437,8 +536,10 @@ export default function LabelsPage() {
           <span className="step-num">3</span> Print or export
         </SectionTitle>
 
-        {busy ? (
-          <Spinner label="Generating labels" />
+        {busy && !progress ? (
+          <Spinner label="Loading labels" />
+        ) : busy ? (
+          <p className="muted">Working…</p>
         ) : generated.length === 0 ? (
           <EmptyState
             title="No labels generated yet"
@@ -446,6 +547,11 @@ export default function LabelsPage() {
           />
         ) : (
           <>
+            {loadedBatch && (
+              <p className="table-note">
+                Batch <strong>{loadedBatch}</strong> · {generated.length.toLocaleString('en-GB')} labels
+              </p>
+            )}
             <div className="import-actions">
               <button type="button" className="btn btn-primary" onClick={exportCsv}>
                 Download CSV
@@ -456,9 +562,35 @@ export default function LabelsPage() {
                 onClick={() => void printSheet()}
                 disabled={printing}
               >
-                {printing ? 'Preparing…' : 'Print label sheet'}
+                {printing ? 'Preparing…' : generated.length > SHEET ? 'Print this sheet' : 'Print label sheet'}
               </button>
             </div>
+
+            {generated.length > SHEET && (
+              <div className="field">
+                <label className="field-label" htmlFor="lbl-sheet">
+                  Sheet to print
+                </label>
+                <select
+                  id="lbl-sheet"
+                  className="input"
+                  value={sheet}
+                  onChange={(e) => setSheet(Number(e.target.value))}
+                >
+                  {Array.from({ length: Math.ceil(generated.length / SHEET) }, (_, i) => (
+                    <option key={i} value={i}>
+                      Sheet {i + 1} of {Math.ceil(generated.length / SHEET)} — labels{' '}
+                      {(i * SHEET + 1).toLocaleString('en-GB')}–
+                      {Math.min((i + 1) * SHEET, generated.length).toLocaleString('en-GB')}
+                    </option>
+                  ))}
+                </select>
+                <p className="field-hint">
+                  Large runs print {SHEET} labels at a time. For thousands of labels, download the CSV for the
+                  label printer instead.
+                </p>
+              </div>
+            )}
 
             <div className="qr-grid">
               {generated.slice(0, PREVIEW_LIMIT).map((p) => (
@@ -467,8 +599,8 @@ export default function LabelsPage() {
             </div>
             {generated.length > PREVIEW_LIMIT && (
               <p className="table-note">
-                Showing the first {PREVIEW_LIMIT} of {generated.length}. The CSV and the print sheet
-                contain all of them.
+                Showing the first {PREVIEW_LIMIT} of {generated.length.toLocaleString('en-GB')}. The CSV
+                contains all of them.
               </p>
             )}
           </>
@@ -477,13 +609,15 @@ export default function LabelsPage() {
 
       {recent.length > 0 && (
         <Card>
-          <SectionTitle>Recent batches</SectionTitle>
+          <SectionTitle>Recent batches (tap one to export or print it again)</SectionTitle>
           <ul className="kv-list">
             {recent.map((r) => (
               <li key={r.batch}>
-                <span>{r.batch}</span>
+                <button type="button" className="link-button" onClick={() => void loadBatch(r.batch!, r.n)} disabled={busy}>
+                  {r.batch}
+                </button>
                 <strong>
-                  {r.n} · {formatDate(r.at)}
+                  {r.n.toLocaleString('en-GB')} · {formatDate(r.at)}
                 </strong>
               </li>
             ))}

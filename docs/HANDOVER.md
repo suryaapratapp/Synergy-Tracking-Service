@@ -176,9 +176,10 @@ change takes effect immediately — they sign in with the new name straight away
 
 **QR labels** (admin only) — generates label codes in the fixed format
 `RZCIR-<product code>-AAA999`, e.g. `RZCIR-MVN191-AAA001` — a product code
-(MVN191 for the current curtain line) then three letters and three digits. Choose the product and a quantity (up to 500 per
-click), press generate, then download the CSV for the label printer or print a
-ready-made sheet of 28 × 34 mm labels. Each label carries the QR with the code
+(MVN191 for the current curtain line) then three letters and three digits. Choose the product and a quantity (up to **50,000 per
+run**), press generate, then download the CSV for the label printer or print a
+ready-made sheet of 28 × 34 mm labels (500 per sheet; a list picks the sheet for
+big runs). Each label carries the QR with the code
 printed underneath, so a damaged label can still be typed in. A preview of the
 exact label is shown before generating.
 
@@ -202,8 +203,38 @@ The counter lives in `public.code_counters`, not in the products table, which is
 what makes "never reused" hold absolutely: deleting a product — or wiping the
 entire demo dataset — does not rewind it, so a retired number can never come round
 again. Blocks are reserved atomically, so two admins generating at once can never
-be handed the same serial. Verified by deleting freshly issued codes and
-confirming the next run skipped past them.
+be handed the same serial.
+
+Three layers keep a number from ever being issued twice:
+
+1. **The counter only moves forward.** A trigger (`code_counters_guard`) rejects any
+   update that lowers `last_serial`, any delete of a counter row, and `TRUNCATE`.
+2. **A new run starts after the highest code that already exists** in the same
+   prefix / product code / format, even if the counter were somehow lost or a code
+   was registered by hand beyond it. (`rpc_generate_product_codes` reads the top
+   existing code, decodes it with `decode_code_serial` and starts above whichever is
+   higher.)
+3. **`products.qr_code` is unique**, so a collision fails the whole run rather than
+   producing a duplicate.
+
+Each run takes the next numbers from the end of the previous run of the same
+format. Both guards were tested by lowering, deleting and truncating the counter,
+by deliberately losing it, and by registering a code far ahead.
+
+**Big runs (up to 50,000).** A request is limited to 8 seconds and a response to
+1,000 rows, so `rpc_generate_product_codes` makes at most 1,000 per call (set-based,
+about 0.8 s) and the screen asks for 1,000 at a time with a progress bar and a Stop
+button. 50,000 takes about 45 seconds. A run that stops part-way keeps what it made
+and can be reloaded from *Recent batches* (`rpc_label_batches`); the numbers it
+used stay used. Runs of 5,000 or more ask for confirmation first. For anything over
+a few hundred labels, export the CSV for the label printer rather than printing
+from the browser.
+
+**If you genuinely need to rewind a counter** (for example a test line that was
+never printed), a database owner can disable the guard for that one operation:
+`alter table public.code_counters disable trigger code_counters_guard;` … change …
+`alter table public.code_counters enable trigger code_counters_guard;`. Do it inside
+one `DO` block so the guard cannot be left off by an error.
 
 **Stock is held as boxes.** Synergy packs already-labelled product into a box,
 invoices it to a hospital and ships it; the items inside are scanned and
@@ -270,7 +301,7 @@ Reports.
 | `installations` | One row per install→take-down cycle, with reason and notes |
 | `product_events` | Append-only audit trail of everything that happened |
 | `stock_boxes` | Boxed stock awaiting dispatch, in transit, or delivered — placeholder until Synergy's inventory system is connected |
-| `code_counters` | The label serial per product line; never rewinds, which is what makes codes unrepeatable |
+| `code_counters` | The label serial per prefix / product line / format; a trigger stops it ever moving backwards, which is what makes codes unrepeatable |
 | `profiles` | Role and hospital scope, linked to the auth user |
 | `app_settings` | `default_change_due_days` (180) and `product_line` |
 
@@ -354,7 +385,8 @@ When the code format changed to 3 letters + 3 digits the counter was reset, so
 the first label generated is `RZCIR-MVN191-AAA001`. A code in the old 4+4 format
 can never equal a 3+3 code, so nothing can repeat. From here on the counter never
 rewinds — if you ever wipe test data again, leave it alone so a printed test label
-cannot be reissued. (Only if you are certain none exists: `update public.code_counters set last_serial = 0;`)
+cannot be reissued. The database now enforces this: lowering or deleting a counter is
+refused (see *Three layers* above for the supported way around it).
 
 The three placeholder hospitals (Queen Mary, St Thomas General, Royal Albert) and
 their wards and bays are stand-ins until Synergy's real location list arrives —

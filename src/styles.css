@@ -1228,3 +1228,8 @@ button.stat:hover { background: var(--raised); }
 
 .format-edit { margin: 16px 0; padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
 .format-edit h3 { margin: 0; font-size: 0.95rem; }
+
+.gen-progress { display: flex; flex-direction: column; gap: 10px; }
+.gen-bar { height: 12px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.gen-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--brand), #14a091); transition: width 0.25s ease; }
+.gen-progress p { margin: 0; font-size: 0.92rem; color: var(--ink-2); }
