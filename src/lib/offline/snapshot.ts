@@ -88,12 +88,22 @@ export async function looksLikeOurCode(code: string): Promise<boolean> {
   return prefixes.some((p) => upper.startsWith(p.toUpperCase()))
 }
 
-async function refreshConfig() {
+/** Saves the settings a phone needs offline, and returns the server's clock. */
+async function refreshConfig(): Promise<string | null> {
   const { data, error } = await withTimeout((signal) =>
     supabase.rpc('rpc_offline_config').abortSignal(signal),
   )
-  if (!error && data) await kvSet(CONFIG_KEY, data)
+  if (error) throw error
+  if (!data) return null
+  await kvSet(CONFIG_KEY, data)
+  return (data as { server_time?: string }).server_time ?? null
 }
+
+/**
+ * Changes are made safe to miss: a change is only "seen" once it is this old, so a
+ * slow transaction that commits a moment late cannot slip past an update.
+ */
+const SAFETY_MS = 10_000
 
 /* ------------------------------------------------------------ product list */
 
@@ -142,11 +152,10 @@ function report(rows: number) {
  * order a page at a time, several slices at once. Much quicker than one long
  * queue for a phone that has nothing yet.
  */
-async function downloadAll(): Promise<string | null> {
+async function downloadAll(): Promise<void> {
   const slices = '0123456789abcdef'.split('')
   const queue = [...slices]
   let received = 0
-  let newest: string | null = null
 
   const worker = async () => {
     for (let hex = queue.shift(); hex !== undefined; hex = queue.shift()) {
@@ -163,35 +172,36 @@ async function downloadAll(): Promise<string | null> {
         await dbPutMany('products', rows)
         received += rows.length
         report(received)
-        for (const r of rows) if (r.updated_at && (!newest || r.updated_at > newest)) newest = r.updated_at
         if (rows.length < PAGE) break
         after = rows[rows.length - 1].id
       }
     }
   }
   await Promise.all(Array.from({ length: PARALLEL }, worker))
-  return newest
 }
 
 async function doSync(): Promise<boolean> {
   try {
     const meta = (await kvGet<SyncMeta>(META_KEY)) ?? { cursor: null, syncedAt: null }
-    let newest = meta.cursor
+
+    // "Since when?" is the server's own clock at the start of this update, less a short
+    // safety margin - not the newest change seen. Using the newest change meant that after
+    // a big label run every update re-downloaded the whole run.
+    const serverNow = await refreshConfig()
+    const nextCursor = new Date((serverNow ? new Date(serverNow).getTime() : Date.now() - 5 * 60_000) - SAFETY_MS).toISOString()
 
     if (!meta.cursor) {
-      newest = await downloadAll()
+      await downloadAll()
     } else {
-      // Only what changed since last time. Overlap the cursor slightly so a row changed
-      // during the last sync is not missed; each page starts where the last ended (by change
+      // Only what changed since last time; each page starts where the last ended (by change
       // time, then id) rather than skipping ahead by offset.
-      const since = new Date(new Date(meta.cursor).getTime() - 60_000).toISOString()
       let afterTime: string | null = null
       let afterId: string | null = null
       let received = 0
       for (;;) {
         let q = supabase.from('v_products').select(COLUMNS)
         if (afterTime) q = q.or(`updated_at.gt.${afterTime},and(updated_at.eq.${afterTime},id.gt.${afterId})`)
-        else q = q.gte('updated_at', since)
+        else q = q.gte('updated_at', meta.cursor)
         const { data, error } = await withTimeout(
           (signal) =>
             q.order('updated_at', { ascending: true }).order('id', { ascending: true }).limit(PAGE).abortSignal(signal),
@@ -202,7 +212,6 @@ async function doSync(): Promise<boolean> {
         await dbPutMany('products', rows)
         received += rows.length
         report(received)
-        for (const r of rows) if (r.updated_at && (!newest || r.updated_at > newest)) newest = r.updated_at
         if (rows.length < PAGE) break
         const last = rows[rows.length - 1]
         afterTime = last.updated_at
@@ -210,8 +219,7 @@ async function doSync(): Promise<boolean> {
       }
     }
 
-    await kvSet(META_KEY, { cursor: newest, syncedAt: new Date().toISOString() } satisfies SyncMeta)
-    void refreshConfig().catch(() => undefined)
+    await kvSet(META_KEY, { cursor: nextCursor, syncedAt: new Date().toISOString() } satisfies SyncMeta)
     reportNetwork(true)
     changed()
     return true

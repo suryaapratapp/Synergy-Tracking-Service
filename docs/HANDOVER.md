@@ -138,7 +138,10 @@ How it works (`src/lib/offline/`):
   saved jobs* / *N could not be saved*; tapping it lists them. The home screen has
   just one control for staying ready: an **Update** button whose dot is green when
   the data is under 12 hours old and amber when it is due a refresh. No counts, no
-  explanation.
+  explanation. After an update it says *Updated just now. Ready to work offline.*
+  (or a red *Could not update* if it failed). An update asks the server for its own clock
+  (`rpc_offline_config.server_time`) and fetches only what changed since then, so a
+  routine top-up takes about a second even after a large label run.
 - **Leaving with unsent jobs.** *Exit* warns first. The jobs stay on the phone and
   are sent the next time someone signs in with signal.
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNetworkUsable } from '../lib/offline/network'
 import { dismissFailed, flush, retryFailed, useSyncState } from '../lib/offline/queue'
 import { onSnapshotChange, snapshotInfo, syncSnapshot } from '../lib/offline/snapshot'
@@ -136,6 +136,8 @@ export function UpdateButton() {
   const info = useSnapshotInfo()
   const { reload } = useData()
   const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<'ok' | 'fail' | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const [, tick] = useState(0)
 
   // The dot turns amber on its own as the data ages.
@@ -143,25 +145,47 @@ export function UpdateButton() {
     const t = setInterval(() => tick((n) => n + 1), 60_000)
     return () => clearInterval(t)
   }, [])
+  useEffect(() => () => clearTimeout(timer.current), [])
 
   const fresh = !!info.syncedAt && Date.now() - new Date(info.syncedAt).getTime() < FRESH_MS
 
   const update = async () => {
     setBusy(true)
+    setResult(null)
+    clearTimeout(timer.current)
     await reload()
-    await syncSnapshot()
+    const ok = await syncSnapshot()
     setBusy(false)
+    setResult(ok ? 'ok' : 'fail')
+    // Say what happened, then get out of the way.
+    timer.current = setTimeout(() => setResult(null), ok ? 8000 : 10_000)
   }
 
   return (
-    <button
-      type="button"
-      className={`update-btn ${fresh ? 'is-fresh' : 'is-stale'}`}
-      onClick={() => void update()}
-      disabled={busy || !usable}
-    >
-      <span className={`update-dot ${busy ? 'is-busy' : ''}`} aria-hidden="true" />
-      {busy ? 'Updating…' : 'Update'}
-    </button>
+    <div className="update-wrap">
+      <button
+        type="button"
+        className={`update-btn ${result === 'ok' ? 'is-done' : fresh ? 'is-fresh' : 'is-stale'}`}
+        onClick={() => void update()}
+        disabled={busy || !usable}
+      >
+        <span className={`update-dot ${busy ? 'is-busy' : ''}`} aria-hidden="true" />
+        {busy ? 'Updating…' : result === 'ok' ? 'Updated' : 'Update'}
+      </button>
+
+      {result === 'ok' && (
+        <p className="update-msg update-msg-ok" role="status">
+          <span className="update-tick" aria-hidden="true">
+            ✓
+          </span>
+          Updated just now. Ready to work offline.
+        </p>
+      )}
+      {result === 'fail' && (
+        <p className="update-msg update-msg-bad" role="alert">
+          Could not update. Check your signal and try again.
+        </p>
+      )}
+    </div>
   )
 }
