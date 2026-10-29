@@ -5,23 +5,23 @@
  * with or without signal, and only the wording ("Saved on this phone") differs.
  */
 
-import { supabase } from '../supabase'
 import { readGuestName } from '../guest'
-import type { InstallationView, LocationRow, ProductView, RemovalReason } from '../types'
+import type { InstallationView, ProductView, RemovalReason } from '../types'
+import { describePlace, shortPlace, type Place } from '../location'
 import {
   applyInstallLocal,
   applyTakedownLocal,
-  bayInstallationsLocal,
   defaultDueDays,
-  fetchBayNet,
+  fetchInstallationsNet,
   fetchProductNet,
-  getByInstallationLocal,
   getProductLocal,
+  installationsLocal,
   looksLikeOurCode,
   type CachedProduct,
+  type PlaceFilter,
 } from './snapshot'
-import { enqueue, flush, newId, removePending, takeResult, watch, type OpRpc, type SyncState } from './queue'
-import { networkUsable, withTimeout } from './network'
+import { dismissFailed, enqueue, flush, newId, removePending, takeResult, watch, type OpRpc, type SyncState } from './queue'
+import { networkUsable } from './network'
 
 /* ---------------------------------------------------------------- lookups */
 
@@ -38,43 +38,20 @@ export async function lookupProduct(code: string, state: Pick<SyncState, 'pendin
   return getProductLocal(code)
 }
 
-/** `live` is false when the answer came from the phone's own copy. */
-export async function bayInstallations(
-  bayId: string,
+/**
+ * What is hanging at a place (a hospital, floor, ward or bay) - at most the first
+ * 100, most overdue first, with the real total. `live` is false when the answer
+ * came from the phone's own copy.
+ */
+export async function installationsAt(
+  filter: PlaceFilter,
   state: Pick<SyncState, 'pending'>,
-): Promise<{ rows: InstallationView[]; live: boolean }> {
+): Promise<{ rows: InstallationView[]; total: number; live: boolean }> {
   if (networkUsable() && state.pending === 0) {
-    const live = await fetchBayNet(bayId)
-    if (live) return { rows: live, live: true }
+    const live = await fetchInstallationsNet(filter)
+    if (live) return { ...live, live: true }
   }
-  return { rows: await bayInstallationsLocal(bayId), live: false }
-}
-
-export interface InstallationInfo {
-  installationId: string
-  qrCode: string
-  where: string
-}
-
-export async function installationInfo(id: string): Promise<InstallationInfo | null> {
-  if (networkUsable()) {
-    try {
-      const { data } = await withTimeout(
-        (signal) => supabase.from('v_installations').select('*').eq('id', id).abortSignal(signal).maybeSingle(),
-        4000,
-      )
-      if (data) {
-        const r = data as InstallationView
-        return { installationId: r.id, qrCode: r.qr_code, where: [r.hospital_name, r.ward_name, r.bay_name].join(' · ') }
-      }
-    } catch {
-      /* fall through to the phone's copy */
-    }
-  }
-  const p = await getByInstallationLocal(id)
-  return p
-    ? { installationId: id, qrCode: p.qr_code, where: [p.hospital_name, p.ward_name, p.bay_name].filter(Boolean).join(' · ') }
-    : null
+  return { ...(await installationsLocal(filter)), live: false }
 }
 
 /* ----------------------------------------------------------------- checks */
@@ -82,7 +59,7 @@ export async function installationInfo(id: string): Promise<InstallationInfo | n
 const STALE = ' (the list on this phone may be out of date)'
 
 function whereIs(p: CachedProduct): string {
-  return [p.ward_name, p.bay_name].filter(Boolean).join(' · ') || 'a bay'
+  return shortPlace({ hospitalName: p.hospital_name ?? 'a hospital', wardName: p.ward_name, bayName: p.bay_name })
 }
 
 /** Obvious mistakes, caught from the phone's copy when the server cannot be asked. */
@@ -131,7 +108,7 @@ async function submit<T>(job: {
   }
   if (result && !result.ok) {
     // The server refused it. It is shown to the person now, so drop it from the queue.
-    await removePending(job.opId)
+    await dismissFailed(job.opId)
     throw new Error(result.message)
   }
 
@@ -150,8 +127,8 @@ export interface InstalledItem {
   /** Server product id - empty for something saved on the phone and not yet sent. */
   id: string
   qr_code: string
-  ward_name: string | null
-  bay_name: string | null
+  /** Where it went, short: "Cardiology Ward · Bay C1", or just the hospital. */
+  place: string
   due_date: string | null
   queued: boolean
 }
@@ -166,7 +143,7 @@ async function installJob(args: {
   rpc: 'rpc_install_product' | 'rpc_install_replacement'
   rpcArgs: Record<string, unknown>
   code: string
-  bay: LocationRow
+  place: Place
   dueDays: number | null
   label: string
 }): Promise<InstalledItem> {
@@ -183,7 +160,7 @@ async function installJob(args: {
     label: args.label,
     check: () => checkInstall(args.code),
     applyLocal: () =>
-      applyInstallLocal({ code: args.code, installationId: opId, bay: args.bay, dueDate, at }),
+      applyInstallLocal({ code: args.code, installationId: opId, place: args.place, dueDate, at }),
   })
 
   if (out.queued) {
@@ -191,8 +168,7 @@ async function installJob(args: {
       key: opId,
       id: '',
       qr_code: args.code,
-      ward_name: args.bay.ward_name,
-      bay_name: args.bay.bay_name,
+      place: shortPlace(args.place),
       due_date: dueDate,
       queued: true,
     }
@@ -202,8 +178,7 @@ async function installJob(args: {
     key: p.installation_id ?? opId,
     id: p.id,
     qr_code: p.qr_code,
-    ward_name: p.ward_name,
-    bay_name: p.bay_name,
+    place: shortPlace({ hospitalName: p.hospital_name ?? args.place.hospitalName, wardName: p.ward_name, bayName: p.bay_name }),
     due_date: p.due_date,
     queued: false,
   }
@@ -211,24 +186,28 @@ async function installJob(args: {
 
 export function installProduct(args: {
   code: string
-  bay: LocationRow
+  place: Place
   dueDays: number | null
 }): Promise<InstalledItem> {
+  const where: Record<string, unknown> = { p_hospital_id: args.place.hospitalId }
+  if (args.place.wardId) where.p_ward_id = args.place.wardId
+  if (args.place.bayId) where.p_bay_id = args.place.bayId
   return installJob({
     rpc: 'rpc_install_product',
-    rpcArgs: { p_qr_code: args.code, p_bay_id: args.bay.bay_id, p_due_days: args.dueDays },
+    rpcArgs: { p_qr_code: args.code, ...where, p_due_days: args.dueDays },
     code: args.code,
-    bay: args.bay,
+    place: args.place,
     dueDays: args.dueDays,
-    label: `Install ${args.code} in ${args.bay.ward_name} · ${args.bay.bay_name}`,
+    label: `Install ${args.code} at ${describePlace(args.place)}`,
   })
 }
 
+/** The new curtain goes exactly where the old one was; no location is asked for. */
 export function hangReplacement(args: {
   code: string
   replacesInstallationId: string
   replacesCode: string
-  bay: LocationRow
+  place: Place
   dueDays: number | null
 }): Promise<InstalledItem> {
   return installJob({
@@ -239,7 +218,7 @@ export function hangReplacement(args: {
       p_due_days: args.dueDays,
     },
     code: args.code,
-    bay: args.bay,
+    place: args.place,
     dueDays: args.dueDays,
     label: `Hang ${args.code} in place of ${args.replacesCode}`,
   })

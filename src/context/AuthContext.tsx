@@ -48,6 +48,8 @@ interface AuthValue {
   guestName: string
   /** Staff-only areas - the overview, products, reports and the rest. */
   isStaff: boolean
+  /** Goes up every time someone signs in (staff or guest), so the app can insist on an update. */
+  signInStamp: number
   signIn: (username: string, password: string) => Promise<void>
   signInAsGuest: (name: string, pin: string) => Promise<void>
   setGuestName: (name: string) => void
@@ -66,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [offlineSession, setOfflineSessionState] = useState(false)
   const [guestName, setGuestNameState] = useState<string>(() => readGuestName())
+  const [signInStamp, setSignInStamp] = useState(0)
   const loadedFor = useRef<string | null>(null)
   const offlineRef = useRef(false)
 
@@ -266,6 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setOffline(false)
         setProfile(p)
         loadedFor.current = data.user.id
+        setSignInStamp((n) => n + 1)
       }
     },
     [loadProfile, setOffline],
@@ -343,6 +347,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setOffline(false)
       setProfile(p)
       loadedFor.current = p.id
+      setSignInStamp((n) => n + 1)
     },
     [loadProfile, setGuestName, setOffline, signInOffline],
   )
@@ -391,13 +396,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isGuest: profile?.role === 'guest',
       guestName,
       isStaff: !!profile && profile.role !== 'guest',
+      signInStamp,
       signIn,
       signInAsGuest,
       setGuestName,
       signOut,
       refreshProfile,
     }),
-    [session, profile, loading, offlineSession, guestName, signIn, signInAsGuest, setGuestName, signOut, refreshProfile],
+    [session, profile, loading, offlineSession, guestName, signInStamp, signIn, signInAsGuest, setGuestName, signOut, refreshProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

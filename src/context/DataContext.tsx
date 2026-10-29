@@ -12,6 +12,8 @@ import { supabase } from '../lib/supabase'
 import { isNetworkError, networkUsable, reportNetwork, withTimeout } from '../lib/offline/network'
 import { cacheLocations, cachedLocations } from '../lib/offline/snapshot'
 import type { LocationRow } from '../lib/types'
+import type { LocationSelection } from '../components/LocationPicker'
+import type { Place } from '../lib/location'
 import { useAuth } from './AuthContext'
 
 /**
@@ -33,6 +35,8 @@ interface DataValue {
   wardsFor: (hospitalId: string, floor: string) => { id: string; name: string }[]
   baysFor: (wardId: string) => { id: string; name: string; active_products: number }[]
   bay: (bayId: string) => LocationRow | undefined
+  /** The place a picker selection stands for (hospital required; the rest optional). */
+  placeFor: (sel: LocationSelection) => Place | null
 }
 
 const DataContext = createContext<DataValue | null>(null)
@@ -128,6 +132,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
           .map((l) => ({ id: l.bay_id, name: l.bay_name, active_products: l.active_products }))
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
       bay: (bayId) => locations.find((l) => l.bay_id === bayId),
+      placeFor: (sel) => {
+        const h = hospitals.find((x) => x.id === sel.hospitalId)
+        if (!h) return null
+        const wardRow = sel.wardId ? locations.find((l) => l.ward_id === sel.wardId) : undefined
+        const bayRow = sel.bayId ? locations.find((l) => l.bay_id === sel.bayId) : undefined
+        return {
+          hospitalId: h.id,
+          hospitalName: h.name,
+          wardId: wardRow?.ward_id ?? null,
+          wardName: wardRow?.ward_name ?? null,
+          floor: wardRow?.floor ?? null,
+          bayId: bayRow?.bay_id ?? null,
+          bayName: bayRow?.bay_name ?? null,
+        }
+      },
     }
   }, [locations, loading, error, reload])
 

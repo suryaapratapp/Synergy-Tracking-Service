@@ -86,11 +86,12 @@ export interface InstallationView {
   product_type: string
   hospital_id: string
   hospital_name: string
-  ward_id: string
-  ward_name: string
-  floor: string
-  bay_id: string
-  bay_name: string
+  /** Floor, ward and bay are optional: an install can be recorded at hospital level only. */
+  ward_id: string | null
+  ward_name: string | null
+  floor: string | null
+  bay_id: string | null
+  bay_name: string | null
   installed_at: string
   installed_by: string | null
   installed_by_name: string | null

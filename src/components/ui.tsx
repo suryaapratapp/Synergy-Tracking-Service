@@ -123,16 +123,27 @@ export function Field({
   hint,
   children,
   htmlFor,
+  required = false,
+  className = '',
 }: {
   label: string
   hint?: string
   children: ReactNode
   htmlFor?: string
+  /** Shows the red asterisk: this one must be filled in. */
+  required?: boolean
+  className?: string
 }) {
   return (
-    <div className="field">
+    <div className={`field ${className}`.trim()}>
       <label className="field-label" htmlFor={htmlFor}>
         {label}
+        {required && (
+          <span className="req" aria-hidden="true">
+            {' '}
+            *
+          </span>
+        )}
       </label>
       {children}
       {hint && <p className="field-hint">{hint}</p>}

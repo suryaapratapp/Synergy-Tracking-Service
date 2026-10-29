@@ -10,9 +10,10 @@
  * got wrong is corrected the next time it connects.
  */
 
-import { supabase, fetchAllRows } from '../supabase'
+import { supabase } from '../supabase'
 import type { InstallationView, LocationRow, ProductView } from '../types'
-import { dbCount, dbDelete, dbGet, dbGetByIndex, dbPutMany, kvGet, kvSet } from './db'
+import type { Place } from '../location'
+import { dbCount, dbDelete, dbGet, dbGetAll, dbGetByIndex, dbPutMany, kvGet, kvSet } from './db'
 import { isNetworkError, networkUsable, reportNetwork, withTimeout } from './network'
 
 /** The slice of a product the offline screens need. */
@@ -102,46 +103,114 @@ export async function snapshotInfo(): Promise<{ syncedAt: string | null; count: 
 }
 
 let syncing: Promise<boolean> | null = null
+const progressListeners = new Set<(rows: number) => void>()
+let progressNow = 0
 
 /**
  * Brings the phone's product list up to date. Safe to call often: it does
- * nothing without a working connection and never runs twice at once.
+ * nothing without a working connection and never runs twice at once - a second
+ * caller simply joins the one already running. `onProgress` is told how many
+ * products have arrived so far, whoever started the download.
  */
-export function syncSnapshot(): Promise<boolean> {
+export function syncSnapshot(onProgress?: (rows: number) => void): Promise<boolean> {
   if (!networkUsable()) return Promise.resolve(false)
+  if (onProgress) {
+    progressListeners.add(onProgress)
+    onProgress(progressNow)
+  }
   if (!syncing) {
+    progressNow = 0
     syncing = doSync().finally(() => {
       syncing = null
     })
   }
-  return syncing
+  return syncing.finally(() => {
+    if (onProgress) progressListeners.delete(onProgress)
+  })
+}
+
+const PAGE = 1000
+const PARALLEL = 6
+
+function report(rows: number) {
+  progressNow = rows
+  progressListeners.forEach((l) => l(rows))
+}
+
+/**
+ * The very first download: the id space is cut into 16 slices, each read in
+ * order a page at a time, several slices at once. Much quicker than one long
+ * queue for a phone that has nothing yet.
+ */
+async function downloadAll(): Promise<string | null> {
+  const slices = '0123456789abcdef'.split('')
+  const queue = [...slices]
+  let received = 0
+  let newest: string | null = null
+
+  const worker = async () => {
+    for (let hex = queue.shift(); hex !== undefined; hex = queue.shift()) {
+      const lower = `${hex}0000000-0000-0000-0000-000000000000`
+      const upper = hex === 'f' ? null : `${slices[slices.indexOf(hex) + 1]}0000000-0000-0000-0000-000000000000`
+      let after: string | null = null
+      for (;;) {
+        let q = supabase.from('v_products').select(COLUMNS)
+        q = after ? q.gt('id', after) : q.gte('id', lower)
+        if (upper) q = q.lt('id', upper)
+        const { data, error } = await withTimeout((signal) => q.order('id').limit(PAGE).abortSignal(signal), 20_000)
+        if (error) throw error
+        const rows = (data ?? []) as unknown as CachedProduct[]
+        await dbPutMany('products', rows)
+        received += rows.length
+        report(received)
+        for (const r of rows) if (r.updated_at && (!newest || r.updated_at > newest)) newest = r.updated_at
+        if (rows.length < PAGE) break
+        after = rows[rows.length - 1].id
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: PARALLEL }, worker))
+  return newest
 }
 
 async function doSync(): Promise<boolean> {
   try {
     const meta = (await kvGet<SyncMeta>(META_KEY)) ?? { cursor: null, syncedAt: null }
-    // Overlap the cursor slightly so a row changed during the last sync is not missed.
-    const since = meta.cursor ? new Date(new Date(meta.cursor).getTime() - 60_000).toISOString() : null
+    let newest = meta.cursor
 
-    const { rows, error } = await fetchAllRows<CachedProduct>(
-      (from, to) => {
+    if (!meta.cursor) {
+      newest = await downloadAll()
+    } else {
+      // Only what changed since last time. Overlap the cursor slightly so a row changed
+      // during the last sync is not missed; each page starts where the last ended (by change
+      // time, then id) rather than skipping ahead by offset.
+      const since = new Date(new Date(meta.cursor).getTime() - 60_000).toISOString()
+      let afterTime: string | null = null
+      let afterId: string | null = null
+      let received = 0
+      for (;;) {
         let q = supabase.from('v_products').select(COLUMNS)
-        if (since) q = q.gte('updated_at', since)
-        return q.order('updated_at', { ascending: true }).order('id', { ascending: true }).range(from, to)
-      },
-      200_000,
-    )
-    if (error) throw error
+        if (afterTime) q = q.or(`updated_at.gt.${afterTime},and(updated_at.eq.${afterTime},id.gt.${afterId})`)
+        else q = q.gte('updated_at', since)
+        const { data, error } = await withTimeout(
+          (signal) =>
+            q.order('updated_at', { ascending: true }).order('id', { ascending: true }).limit(PAGE).abortSignal(signal),
+          20_000,
+        )
+        if (error) throw error
+        const rows = (data ?? []) as unknown as CachedProduct[]
+        await dbPutMany('products', rows)
+        received += rows.length
+        report(received)
+        for (const r of rows) if (r.updated_at && (!newest || r.updated_at > newest)) newest = r.updated_at
+        if (rows.length < PAGE) break
+        const last = rows[rows.length - 1]
+        afterTime = last.updated_at
+        afterId = last.id
+      }
+    }
 
-    await dbPutMany('products', rows)
-    const newest = rows.reduce<string | null>(
-      (max, r) => (r.updated_at && (!max || r.updated_at > max) ? r.updated_at : max),
-      meta.cursor,
-    )
-    await kvSet(META_KEY, {
-      cursor: newest,
-      syncedAt: new Date().toISOString(),
-    } satisfies SyncMeta)
+    await kvSet(META_KEY, { cursor: newest, syncedAt: new Date().toISOString() } satisfies SyncMeta)
     void refreshConfig().catch(() => undefined)
     reportNetwork(true)
     changed()
@@ -196,26 +265,39 @@ export async function fetchProductNet(
   }
 }
 
-/** What is hanging in a bay, straight from the server. */
-export async function fetchBayNet(bayId: string): Promise<InstallationView[] | null> {
+/** Which installations to list: the hospital is required, the rest narrow it down. */
+export interface PlaceFilter {
+  hospitalId: string
+  floor?: string
+  wardId?: string
+  bayId?: string
+}
+
+export const LIST_LIMIT = 100
+
+/** What is hanging at a place (a whole hospital, a floor, a ward or a bay), straight from the server. */
+export async function fetchInstallationsNet(
+  f: PlaceFilter,
+): Promise<{ rows: InstallationView[]; total: number } | null> {
   try {
-    const { data, error } = await withTimeout(
-      (signal) =>
-        supabase
-          .from('v_installations')
-          .select('*')
-          .eq('bay_id', bayId)
-          .is('removed_at', null)
-          .order('installed_at', { ascending: true })
-          .abortSignal(signal),
-      5000,
+    let q = supabase
+      .from('v_installations')
+      .select('*', { count: 'exact' })
+      .eq('hospital_id', f.hospitalId)
+      .is('removed_at', null)
+    if (f.bayId) q = q.eq('bay_id', f.bayId)
+    else if (f.wardId) q = q.eq('ward_id', f.wardId)
+    else if (f.floor) q = q.eq('floor', f.floor)
+    const { data, error, count } = await withTimeout(
+      (signal) => q.order('due_date', { ascending: true }).limit(LIST_LIMIT).abortSignal(signal),
+      6000,
     )
     if (error) {
       if (isNetworkError(error)) reportNetwork(false)
       return null
     }
     reportNetwork(true)
-    return (data ?? []) as InstallationView[]
+    return { rows: (data ?? []) as InstallationView[], total: count ?? (data ?? []).length }
   } catch {
     reportNetwork(false)
     return null
@@ -234,24 +316,36 @@ function daysBetween(fromIso: string, to = new Date()): number {
   return Math.max(0, Math.floor((to.getTime() - new Date(fromIso).getTime()) / 86_400_000))
 }
 
-/** What is hanging in a bay, from the phone's copy. */
-export async function bayInstallationsLocal(bayId: string): Promise<InstallationView[]> {
-  const rows = await dbGetByIndex<CachedProduct>('products', 'bay_id', bayId)
-  return rows
-    .filter((r) => r.installation_id && r.installed_at && r.due_date)
-    .sort((a, b) => (a.installed_at! < b.installed_at! ? -1 : 1))
-    .map((r) => ({
+/** What is hanging at a place, from the phone's own copy. */
+export async function installationsLocal(f: PlaceFilter): Promise<{ rows: InstallationView[]; total: number }> {
+  const all = f.bayId
+    ? await dbGetByIndex<CachedProduct>('products', 'bay_id', f.bayId)
+    : await dbGetAll<CachedProduct>('products')
+  const hits = all
+    .filter(
+      (r) =>
+        r.installation_id &&
+        r.installed_at &&
+        r.due_date &&
+        r.hospital_id === f.hospitalId &&
+        (!f.wardId || r.ward_id === f.wardId) &&
+        (!f.floor || f.wardId || r.floor === f.floor),
+    )
+    .sort((a, b) => (a.due_date! < b.due_date! ? -1 : 1))
+  return {
+    total: hits.length,
+    rows: hits.slice(0, LIST_LIMIT).map((r) => ({
       id: r.installation_id!,
       product_id: r.id,
       qr_code: r.qr_code,
       product_type: r.product_type,
       hospital_id: r.hospital_id ?? '',
       hospital_name: r.hospital_name ?? '',
-      ward_id: r.ward_id ?? '',
-      ward_name: r.ward_name ?? '',
-      floor: r.floor ?? '',
-      bay_id: r.bay_id ?? bayId,
-      bay_name: r.bay_name ?? '',
+      ward_id: r.ward_id,
+      ward_name: r.ward_name,
+      floor: r.floor,
+      bay_id: r.bay_id,
+      bay_name: r.bay_name,
       installed_at: r.installed_at!,
       installed_by: null,
       installed_by_name: null,
@@ -266,7 +360,8 @@ export async function bayInstallationsLocal(bayId: string): Promise<Installation
       replaces_installation_id: null,
       replaces_qr_code: null,
       replaced_by_qr_code: null,
-    }))
+    })),
+  }
 }
 
 /* ---------------------------------------------------------- local changes */
@@ -274,7 +369,7 @@ export async function bayInstallationsLocal(bayId: string): Promise<Installation
 export async function applyInstallLocal(args: {
   code: string
   installationId: string
-  bay: LocationRow
+  place: Place
   dueDate: string
   at: string
 }) {
@@ -290,13 +385,13 @@ export async function applyInstallLocal(args: {
       installation_id: args.installationId,
       installed_at: args.at,
       due_date: args.dueDate,
-      hospital_id: args.bay.hospital_id,
-      hospital_name: args.bay.hospital_name,
-      ward_id: args.bay.ward_id,
-      ward_name: args.bay.ward_name,
-      floor: args.bay.floor,
-      bay_id: args.bay.bay_id,
-      bay_name: args.bay.bay_name,
+      hospital_id: args.place.hospitalId,
+      hospital_name: args.place.hospitalName,
+      ward_id: args.place.wardId,
+      ward_name: args.place.wardName,
+      floor: args.place.floor,
+      bay_id: args.place.bayId,
+      bay_name: args.place.bayName,
       updated_at: existing?.updated_at ?? null,
     } satisfies CachedProduct,
   ])

@@ -123,49 +123,45 @@ export default function SyncStatus() {
   )
 }
 
-/** "Is this phone ready for a ward with no signal?" - shown on the home screen. */
-export function OfflineReadiness() {
+const FRESH_MS = 12 * 60 * 60 * 1000
+
+/**
+ * The one control on the home screen for staying ready for a signal outage:
+ * it refreshes the site and product lists kept on the phone. The dot says
+ * whether they are recent (green) or due a refresh (amber) - no counts, no
+ * explanation.
+ */
+export function UpdateButton() {
   const usable = useNetworkUsable()
   const info = useSnapshotInfo()
-  const { locations } = useData()
+  const { reload } = useData()
   const [busy, setBusy] = useState(false)
+  const [, tick] = useState(0)
 
-  const ready = info.count > 0 && locations.length > 0
+  // The dot turns amber on its own as the data ages.
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const fresh = !!info.syncedAt && Date.now() - new Date(info.syncedAt).getTime() < FRESH_MS
 
   const update = async () => {
     setBusy(true)
+    await reload()
     await syncSnapshot()
     setBusy(false)
   }
 
   return (
-    <div className={ready ? 'ready-card ready-ok' : 'ready-card ready-warn'}>
-      <span className="ready-dot" aria-hidden="true" />
-      <div className="ready-text">
-        {ready ? (
-          <>
-            <strong>Ready for no signal</strong>
-            <span>
-              {info.count.toLocaleString()} products and your sites are saved on this phone
-              {info.syncedAt ? ` · updated ${relativeTime(info.syncedAt)}` : ''}
-            </span>
-          </>
-        ) : (
-          <>
-            <strong>Not ready for no signal yet</strong>
-            <span>
-              {usable
-                ? 'Downloading the site and product list… stay connected for a moment.'
-                : 'Connect once so the site and product list can be saved on this phone.'}
-            </span>
-          </>
-        )}
-      </div>
-      {usable && (
-        <button type="button" className="link-button" disabled={busy} onClick={() => void update()}>
-          {busy ? 'Updating…' : 'Update'}
-        </button>
-      )}
-    </div>
+    <button
+      type="button"
+      className={`update-btn ${fresh ? 'is-fresh' : 'is-stale'}`}
+      onClick={() => void update()}
+      disabled={busy || !usable}
+    >
+      <span className={`update-dot ${busy ? 'is-busy' : ''}`} aria-hidden="true" />
+      {busy ? 'Updating…' : 'Update'}
+    </button>
   )
 }

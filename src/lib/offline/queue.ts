@@ -206,9 +206,17 @@ async function sendOnce(op: QueuedOp, timeoutMs: number): Promise<Attempt & { st
     if (!res.error) return { ok: true, data: res.data }
 
     const err = res.error as { message: string; code?: string }
-    const authProblem = res.status === 401 || err.code === 'PGRST301' || err.code === '28000' || /jwt/i.test(err.message)
+    const code = err.code ?? ''
+    const authProblem = res.status === 401 || code === 'PGRST301' || code === '28000' || /jwt/i.test(err.message)
     if (authProblem) return { retry: true, auth: true }
-    if (isNetworkError(err) || (res.status ?? 0) >= 500 || res.status === 0) return { retry: true }
+
+    // Decide by the error's own code, not the HTTP status: PostgREST answers some of our own
+    // refusals ("not registered yet" is P0002) with a 500, and those are the server saying
+    // no - not a reason to wait and try again.
+    if (/^PGRST00[0-3]$/.test(code)) return { retry: true } // the API could not reach its database
+    if (/^(08|53|57|58|XX)/.test(code)) return { retry: true } // connection, resources, timeout, server fault
+    if (/^[0-9A-Z]{5}$/.test(code)) return { ok: false, message: friendlyError(err) } // a real database answer
+    if (isNetworkError(err) || res.status === 0 || (res.status ?? 0) >= 502) return { retry: true }
     return { ok: false, message: friendlyError(err) }
   } catch (err) {
     return { retry: true, status: isNetworkError(err) ? 0 : undefined }

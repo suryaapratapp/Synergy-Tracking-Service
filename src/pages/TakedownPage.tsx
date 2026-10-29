@@ -1,28 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import {
-  bayInstallations,
-  hangReplacement,
-  lookupProduct,
-  takeDown,
-} from '../lib/offline/actions'
-import { useSyncState } from '../lib/offline/queue'
-import type { CachedProduct } from '../lib/offline/snapshot'
 import { useData } from '../context/DataContext'
 import { useHidScanner } from '../hooks/useHidScanner'
 import ScanField from '../components/ScanField'
 import LocationPicker, { EMPTY_LOCATION, type LocationSelection } from '../components/LocationPicker'
-import { Card, EmptyState, SectionTitle, Spinner, useToast } from '../components/ui'
+import { Card, EmptyState, Field, Spinner, useToast } from '../components/ui'
 import { dueLabel, formatDate, normaliseCode } from '../lib/format'
-import { describeBay, installHereUrl, selectionForBay } from '../lib/location'
+import { describePlace, placeOf, shortPlace, type Place } from '../lib/location'
+import { hangReplacement, installationsAt, lookupProduct, takeDown } from '../lib/offline/actions'
+import { useSyncState } from '../lib/offline/queue'
+import type { CachedProduct } from '../lib/offline/snapshot'
+import { LIST_LIMIT } from '../lib/offline/snapshot'
 import { REMOVAL_REASONS, type InstallationView, type RemovalReason } from '../lib/types'
 
-/** Something that has just come down and is waiting for its replacement. */
+type Mode = 'scan' | 'location'
+
+/** Something that has come down and is waiting for its replacement. */
 interface Pending {
   installationId: string
   qrCode: string
-  bayId: string
-  where: string
+  place: Place
 }
 
 /** A swap completed this session. */
@@ -32,102 +28,96 @@ interface Swap {
   where: string
 }
 
+const REASON_LABELS: Record<RemovalReason, string> = { expired: 'Expired', soiled: 'Soiled', damage: 'Damaged' }
+
 /**
- * Two ways down, because both happen in the field:
- *  - pick the bay and tick off what is being removed (the normal round), or
- *  - scan an individual product that is coming down out of cycle.
+ * Take down - and put the new one up, in one flow.
  *
- * Whatever comes down joins a replacement queue. The next scan hangs the new
- * product in the same bay, so a swap is scan-old, scan-new with nothing to
- * choose in between.
+ * Most visits are a swap: the old curtain comes down and a new one goes in its
+ * place. So taking something down always asks for its replacement straight
+ * away, and the new curtain goes exactly where the old one was - nothing about
+ * the location is asked again.
+ *
+ *  - By scan (the default): scan the old curtain, then the new one.
+ *  - By location: choose where, tick what is coming down, then scan each new one.
  */
 export default function TakedownPage() {
-  const { reload, bay, loading: locationsLoading } = useData()
+  const { reload, placeFor } = useData()
   const toast = useToast()
   const sync = useSyncState()
   const syncRef = useRef(sync)
   syncRef.current = sync
-  const [params] = useSearchParams()
 
-  const [mode, setMode] = useState<'location' | 'scan'>('scan')
-  const [location, setLocation] = useState<LocationSelection>(EMPTY_LOCATION)
-  const [rows, setRows] = useState<InstallationView[]>([])
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [mode, setMode] = useState<Mode>('scan')
   const [reason, setReason] = useState<RemovalReason>('expired')
   const [notes, setNotes] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [showNote, setShowNote] = useState(false)
+
+  const [location, setLocation] = useState<LocationSelection>(EMPTY_LOCATION)
+  const [rows, setRows] = useState<InstallationView[]>([])
+  const [total, setTotal] = useState(0)
   const [fromPhone, setFromPhone] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
 
   const [pending, setPending] = useState<Pending[]>([])
   const [swaps, setSwaps] = useState<Swap[]>([])
-  const [hangError, setHangError] = useState<string | null>(null)
+  const [scanError, setScanError] = useState<string | null>(null)
 
   const busyRef = useRef(false)
   const pendingRef = useRef<Pending[]>([])
   pendingRef.current = pending
-  const panelRef = useRef<HTMLDivElement>(null)
 
-  // Arriving from an install ("take down in this bay") opens on that bay.
-  const presetBay = params.get('bay')
-  const presetApplied = useRef(false)
-  useEffect(() => {
-    if (!presetBay || presetApplied.current || locationsLoading) return
-    const sel = selectionForBay(bay(presetBay))
-    if (sel) {
-      presetApplied.current = true
-      setMode('location')
-      setLocation(sel)
-    }
-  }, [presetBay, locationsLoading, bay])
-
-  const loadBay = useCallback(async (bayId: string) => {
-    if (!bayId) {
+  const loadList = useCallback(async (sel: LocationSelection) => {
+    if (!sel.hospitalId) {
       setRows([])
+      setTotal(0)
       return
     }
     setLoading(true)
-    const { rows: found, live } = await bayInstallations(bayId, syncRef.current)
-    setRows(found)
-    setFromPhone(!live)
+    const res = await installationsAt(
+      {
+        hospitalId: sel.hospitalId,
+        floor: sel.floor || undefined,
+        wardId: sel.wardId || undefined,
+        bayId: sel.bayId || undefined,
+      },
+      syncRef.current,
+    )
+    setRows(res.rows)
+    setTotal(res.total)
+    setFromPhone(!res.live)
     setSelected(new Set())
     setLoading(false)
   }, [])
 
   useEffect(() => {
-    void loadBay(location.bayId)
-  }, [location.bayId, loadBay])
+    if (mode === 'location') void loadList(location)
+  }, [mode, location, loadList])
 
-  // Bring the replacement prompt into view the moment something comes down.
-  const pendingCount = pending.length
-  const lastCount = useRef(0)
-  useEffect(() => {
-    if (pendingCount > lastCount.current) {
-      panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-    lastCount.current = pendingCount
-  }, [pendingCount])
+  const refreshAfterChange = () => {
+    void reload()
+    if (mode === 'location') void loadList(location)
+  }
 
-  const toggle = (id: string) => {
+  const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
 
-  const refreshAfterChange = (bayId?: string) => {
-    void reload()
-    if (location.bayId && (!bayId || bayId === location.bayId)) void loadBay(location.bayId)
-  }
+  const noteOrNull = () => notes.trim() || null
 
-  /* ---------------------------------------------------------- take down */
+  /* ------------------------------------------------------------ take down */
 
   const takeDownSelected = async () => {
     if (selected.size === 0 || busyRef.current) return
     busyRef.current = true
     setBusy(true)
+    setScanError(null)
 
     const chosen = rows.filter((r) => selected.has(r.id))
     try {
@@ -135,28 +125,22 @@ export default function TakedownPage() {
         installationIds: chosen.map((r) => r.id),
         idCodes: chosen.map((r) => r.qr_code),
         reason,
-        notes: notes.trim() || null,
+        notes: noteOrNull(),
       })
-      const n = res.count
       toast(
         res.queued ? 'info' : 'success',
         res.queued
-          ? `${n} product${n === 1 ? '' : 's'} saved as taken down — sent when you have signal`
-          : `${n} product${n === 1 ? '' : 's'} taken down — ${reasonLabel(reason)}`,
+          ? `${res.count} saved as taken down`
+          : `${res.count} taken down`,
       )
       setNotes('')
-      setHangError(null)
       setPending((p) => [
         ...p,
-        ...chosen.map((r) => ({
-          installationId: r.id,
-          qrCode: r.qr_code,
-          bayId: r.bay_id,
-          where: describeBay(r),
-        })),
+        ...chosen.map((r) => ({ installationId: r.id, qrCode: r.qr_code, place: placeOf(r) })),
       ])
       refreshAfterChange()
     } catch (err) {
+      // Location mode has no scan field to show it under, so this one is a pop-up.
       toast('error', (err as Error).message)
     }
 
@@ -164,59 +148,54 @@ export default function TakedownPage() {
     setBusy(false)
   }
 
-  const takeDownCode = async (
-    code: string,
-    found: Pick<CachedProduct, 'installation_id' | 'bay_id' | 'hospital_name' | 'ward_name' | 'bay_name'> | undefined,
-  ) => {
+  const takeDownCode = async (code: string, found: CachedProduct | undefined) => {
     try {
-      const res = await takeDown({ codes: [code], reason, notes: notes.trim() || null })
-      toast(
-        res.queued ? 'info' : 'success',
-        res.queued
-          ? `${code} saved as taken down — sent when you have signal`
-          : `${code} taken down — ${reasonLabel(reason)}`,
-      )
+      const res = await takeDown({ codes: [code], reason, notes: noteOrNull() })
+      toast(res.queued ? 'info' : 'success', res.queued ? `${code} saved as taken down` : `${code} taken down`)
     } catch (err) {
-      toast('error', (err as Error).message)
+      setScanError((err as Error).message)
       return
     }
-    setHangError(null)
-    if (found?.installation_id && found.bay_id) {
+    setScanError(null)
+    if (found?.installation_id && found.hospital_id) {
       setPending((p) => [
         ...p,
-        { installationId: found.installation_id!, qrCode: code, bayId: found.bay_id!, where: describeBay(found) },
+        {
+          installationId: found.installation_id!,
+          qrCode: code,
+          place: placeOf({
+            hospital_id: found.hospital_id!,
+            hospital_name: found.hospital_name ?? '',
+            ward_id: found.ward_id,
+            ward_name: found.ward_name,
+            floor: found.floor,
+            bay_id: found.bay_id,
+            bay_name: found.bay_name,
+          }),
+        },
       ])
     }
-    refreshAfterChange(found?.bay_id ?? undefined)
+    refreshAfterChange()
   }
 
-  /* ----------------------------------------------------------- hang up */
+  /* ------------------------------------------------------------- hang new */
 
   const hang = async (code: string, target: Pending) => {
     try {
-      const row = bay(target.bayId)
-      if (!row) throw new Error('Unknown location')
       const item = await hangReplacement({
         code,
         replacesInstallationId: target.installationId,
         replacesCode: target.qrCode,
-        bay: row,
+        place: target.place,
         dueDays: null,
       })
-      setHangError(null)
+      setScanError(null)
       setPending((p) => p.filter((x) => x.installationId !== target.installationId))
-      setSwaps((s) => [{ newCode: item.qr_code, oldCode: target.qrCode, where: target.where }, ...s])
-      toast(
-        item.queued ? 'info' : 'success',
-        item.queued
-          ? `${item.qr_code} saved on this phone — replaces ${target.qrCode}`
-          : `${item.qr_code} hung in ${item.bay_name} — replaces ${target.qrCode}`,
-      )
-      refreshAfterChange(target.bayId)
+      setSwaps((s) => [{ newCode: item.qr_code, oldCode: target.qrCode, where: shortPlace(target.place) }, ...s])
+      toast(item.queued ? 'info' : 'success', item.queued ? `${item.qr_code} saved on this phone` : `${item.qr_code} fitted`)
+      refreshAfterChange()
     } catch (err) {
-      const msg = (err as Error).message
-      setHangError(msg)
-      toast('error', msg)
+      setScanError((err as Error).message)
     }
   }
 
@@ -231,277 +210,200 @@ export default function TakedownPage() {
       if (!code || busyRef.current) return
       busyRef.current = true
       setBusy(true)
+      setScanError(null)
       try {
         const found = await lookupProduct(code, syncRef.current)
-
         const next = pendingRef.current[0]
-        if (found?.installation_id || !next) {
-          await takeDownCode(code, found)
-        } else {
-          await hang(code, next)
-        }
+        if (found?.installation_id || !next) await takeDownCode(code, found)
+        else await hang(code, next)
       } finally {
         busyRef.current = false
         setBusy(false)
       }
     },
     // takeDownCode and hang read these; everything else they use is stable.
-    [reason, notes, location.bayId, bay],
+    [reason, notes, mode, location, placeFor],
   )
 
-  // Hardware scans are live in By-scan mode, and whenever a replacement is due.
   const { hardwareSeen } = useHidScanner(handleScan, !busy && (mode === 'scan' || pending.length > 0))
+  void hardwareSeen
 
   const next = pending[0]
-  const showPanel = pending.length > 0 || swaps.length > 0
+  const place = placeFor(location)
 
   return (
-    <div className="page">
+    <div className="page page-tight">
       <div className="page-head">
         <div>
           <h1>Take down</h1>
-          <p className="page-sub">Log products coming out of service — and hang their replacements</p>
+          <p className="page-sub">Remove the old curtain, then scan the new one</p>
         </div>
       </div>
 
-      <div className="mode-switch" role="tablist" aria-label="Take-down method">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'location'}
-          className={`mode ${mode === 'location' ? 'is-active' : ''}`}
-          onClick={() => setMode('location')}
-        >
-          <span className="mode-icon" aria-hidden="true">
-            <IconPin />
-          </span>
-          <span className="mode-text">
-            <strong>By location</strong>
-            <small>Pick a bay, tick what is coming down</small>
-          </span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'scan'}
-          className={`mode ${mode === 'scan' ? 'is-active' : ''}`}
-          onClick={() => setMode('scan')}
-        >
-          <span className="mode-icon" aria-hidden="true">
-            <IconScan />
-          </span>
-          <span className="mode-text">
-            <strong>By scan</strong>
-            <small>Scan the old one, then the new one</small>
-          </span>
-        </button>
-      </div>
-
-      {showPanel && (
-        <div ref={panelRef} className="next-anchor">
-          <Card className="next-card">
-            {next ? (
-              <>
-                <div className="next-head">
-                  <span className="next-icon" aria-hidden="true">
-                    <IconSwap />
-                  </span>
-                  <div>
-                    <h2>Hang the replacement</h2>
-                    <p className="next-sub">
-                      {pending.length > 1 ? `1 of ${pending.length} waiting` : 'Same bay, one scan'}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="next-where">
-                  <span className="muted">Came down:</span> <strong>{next.qrCode}</strong>
-                  <br />
-                  <span className="muted">Goes up in:</span> <strong>{next.where}</strong>
-                </p>
-
-                <ScanField
-                  onSubmit={handleScan}
-                  hardwareSeen={hardwareSeen}
-                  busy={busy}
-                  autoFocus
-                  label="Scan the new product"
-                />
-                <p className="field-hint">
-                  Scanning a product that is still hanging takes it down instead, and queues its
-                  replacement.
-                </p>
-
-                {hangError && (
-                  <p className="form-error" role="alert">
-                    {hangError}
-                  </p>
-                )}
-
-                <div className="next-actions">
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setPending((p) => p.slice(1))}
-                    disabled={busy}
-                  >
-                    {pending.length > 1 ? 'Skip this one' : 'Not replacing it'}
-                  </button>
-                  {pending.length > 1 && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setPending([])}
-                      disabled={busy}
-                    >
-                      Skip all
-                    </button>
-                  )}
-                  <Link className="btn btn-ghost btn-sm" to={installHereUrl(next.bayId, next.installationId)}>
-                    Open Install for this bay
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <div className="next-head">
-                <span className="next-icon is-done" aria-hidden="true">
-                  ✓
-                </span>
-                <div>
-                  <h2>All replacements hung</h2>
-                  <p className="next-sub">Scan the next one coming down to carry on.</p>
-                </div>
-              </div>
-            )}
-
-            {swaps.length > 0 && (
-              <div className="swap-log">
-                <p className="swap-log-title">Swapped this session ({swaps.length})</p>
-                <ul>
-                  {swaps.map((s) => (
-                    <li key={s.newCode}>
-                      <span className="swap-new">{s.newCode}</span>
-                      <span className="swap-old">replaced {s.oldCode}</span>
-                      <span className="swap-where">{s.where}</span>
-                    </li>
-                  ))}
-                </ul>
-                {!next && (
-                  <button type="button" className="link-button" onClick={() => setSwaps([])}>
-                    Clear
-                  </button>
-                )}
-              </div>
-            )}
-          </Card>
-        </div>
-      )}
-
-      <Card className="step-card step-1">
-        <SectionTitle>
-          <span className="step-num">1</span> Reason for removal
-        </SectionTitle>
-        <div className="reason-group" role="radiogroup" aria-label="Reason for removal">
-          {REMOVAL_REASONS.map((r) => (
-            <button
-              key={r.value}
-              type="button"
-              role="radio"
-              aria-checked={reason === r.value}
-              className={`reason ${reason === r.value ? 'is-active' : ''}`}
-              onClick={() => setReason(r.value)}
+      <Card className="tight-card">
+        <div className="pair">
+          <Field label="Method" htmlFor="td-mode">
+            <select
+              id="td-mode"
+              className="input"
+              value={mode}
+              onChange={(e) => {
+                setMode(e.target.value as Mode)
+                setScanError(null)
+              }}
             >
-              <span className="reason-label">
-                {r.label}
-                {r.value === 'expired' && <em> (default)</em>}
-              </span>
-              <span className="reason-help">{r.help}</span>
-            </button>
-          ))}
+              <option value="scan">By scan</option>
+              <option value="location">By location</option>
+            </select>
+          </Field>
+          <Field label="Reason" htmlFor="td-reason">
+            <select
+              id="td-reason"
+              className="input"
+              value={reason}
+              onChange={(e) => setReason(e.target.value as RemovalReason)}
+            >
+              {REMOVAL_REASONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {REASON_LABELS[r.value]}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
-
-        <div className="field">
-          <label className="field-label" htmlFor="td-notes">
-            Notes <span className="muted">(optional)</span>
-          </label>
+        {showNote ? (
           <textarea
             id="td-notes"
             className="input"
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Anything the site should know"
+            placeholder="Note (optional)"
+            aria-label="Note"
           />
-        </div>
+        ) : (
+          <button type="button" className="link-button" onClick={() => setShowNote(true)}>
+            + Add a note
+          </button>
+        )}
       </Card>
 
-      {mode === 'location' ? (
+      {next ? (
+        <Card className="swap-card">
+          <div className="swap-head">
+            <span className="swap-tag">Replace</span>
+            <strong className="swap-code">{next.qrCode}</strong>
+            {pending.length > 1 && <span className="swap-count">1 of {pending.length}</span>}
+          </div>
+          <p className="swap-where">{describePlace(next.place)}</p>
+          <ScanField
+            onSubmit={handleScan}
+            busy={busy}
+            autoFocus
+            label="Scan the new curtain"
+            error={scanError}
+          />
+          <div className="swap-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setPending((p) => p.slice(1))}
+              disabled={busy}
+            >
+              No replacement
+            </button>
+            {pending.length > 1 && (
+              <button type="button" className="btn btn-ghost" onClick={() => setPending([])} disabled={busy}>
+                Skip all
+              </button>
+            )}
+          </div>
+        </Card>
+      ) : (
+        mode === 'scan' && (
+          <Card className="tight-card">
+            <ScanField
+              onSubmit={handleScan}
+              busy={busy}
+              autoFocus
+              label="Scan the old curtain"
+              error={scanError}
+            />
+          </Card>
+        )
+      )}
+
+      {mode === 'location' && (
         <>
-          <Card className="step-card step-2">
-            <SectionTitle>
-              <span className="step-num">2</span> Which bay?
-            </SectionTitle>
+          <Card className="tight-card">
+            <h2 className="mini-title">Where?</h2>
             <LocationPicker value={location} onChange={setLocation} disabled={busy} />
           </Card>
 
-          <Card className="step-card step-3">
-            <SectionTitle
-              action={
-                rows.length > 0 ? (
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() =>
-                      setSelected((prev) =>
-                        prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.id)),
-                      )
-                    }
-                  >
-                    {selected.size === rows.length ? 'Clear all' : 'Select all'}
-                  </button>
-                ) : undefined
-              }
-            >
-              <span className="step-num">3</span> What is coming down?
-            </SectionTitle>
+          <Card className="tight-card">
+            <div className="mini-head">
+              <h2 className="mini-title">
+                What is coming down?
+                {place && rows.length > 0 && (
+                  <span className="mini-count">
+                    {' '}
+                    ({total > rows.length ? `${rows.length} of ${total}` : total})
+                  </span>
+                )}
+              </h2>
+              {rows.length > 0 && (
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() =>
+                    setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))))
+                  }
+                >
+                  {selected.size === rows.length ? 'Clear' : 'Select all'}
+                </button>
+              )}
+            </div>
 
-            {!location.bayId ? (
-              <EmptyState title="Choose a bay" hint="Pick the hospital, floor, ward and bay above." />
+            {!location.hospitalId ? (
+              <EmptyState title="Choose a hospital" />
             ) : loading ? (
               <Spinner />
             ) : rows.length === 0 ? (
               <EmptyState
-                title={fromPhone ? 'Nothing is installed in this bay, as far as this phone knows' : 'Nothing is installed in this bay'}
-                hint={fromPhone ? 'No signal — this is the list saved on your phone. Scan a product to take it down anyway.' : undefined}
+                title="Nothing installed here"
+                hint={fromPhone ? 'From the list saved on this phone.' : undefined}
               />
             ) : (
-              <ul className="pick-list">
-                {rows.map((r) => {
-                  const days = Math.round(
-                    (new Date(r.due_date).getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000,
-                  )
-                  return (
-                    <li key={r.id}>
-                      <label className={`pick ${selected.has(r.id) ? 'is-selected' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(r.id)}
-                          onChange={() => toggle(r.id)}
-                        />
-                        <span className="pick-body">
-                          <span className="pick-code">{r.qr_code}</span>
-                          <span className="pick-meta">
-                            Fitted {formatDate(r.installed_at)} · {r.days_in_service} days in service
+              <>
+                <ul className="pick-list">
+                  {rows.map((r) => {
+                    const days = Math.round(
+                      (new Date(r.due_date).getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000,
+                    )
+                    return (
+                      <li key={r.id}>
+                        <label className={`pick ${selected.has(r.id) ? 'is-selected' : ''}`}>
+                          <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                          <span className="pick-body">
+                            <span className="pick-code">{r.qr_code}</span>
+                            <span className="pick-meta">
+                              {shortPlace(placeOf(r))} · fitted {formatDate(r.installed_at)}
+                            </span>
                           </span>
-                        </span>
-                        <span className={`badge badge-due-${days < 0 ? 'danger' : days <= 3 ? 'warn' : 'ok'}`}>
-                          {dueLabel(days)}
-                        </span>
-                      </label>
-                    </li>
-                  )
-                })}
-              </ul>
+                          <span className={`badge badge-due-${days < 0 ? 'danger' : days <= 3 ? 'warn' : 'ok'}`}>
+                            {dueLabel(days)}
+                          </span>
+                        </label>
+                      </li>
+                    )
+                  })}
+                </ul>
+                {total > LIST_LIMIT && (
+                  <p className="muted tight-note">
+                    Showing the {LIST_LIMIT} most overdue. Choose a floor, ward or bay to narrow it down.
+                  </p>
+                )}
+              </>
             )}
           </Card>
 
@@ -516,72 +418,35 @@ export default function TakedownPage() {
                 {busy
                   ? 'Working…'
                   : selected.size === 0
-                    ? 'Select what is coming down'
-                    : `Take down ${selected.size} ${selected.size === 1 ? 'product' : 'products'} — ${reasonLabel(reason)}`}
+                    ? 'Tick what is coming down'
+                    : `Take down ${selected.size} · ${REASON_LABELS[reason]}`}
               </button>
             </div>
           )}
         </>
-      ) : (
-        // While a replacement is waiting, the card above owns the one scan field.
-        !next && (
-          <Card className="step-card step-2">
-            <SectionTitle>
-              <span className="step-num">2</span> Scan the product coming down
-            </SectionTitle>
-            <ScanField
-              onSubmit={handleScan}
-              hardwareSeen={hardwareSeen}
-              busy={busy}
-              autoFocus
-              label="Scan or type the QR / barcode"
-            />
-            <p className="field-hint">
-              Logged straight away with the reason above. You will be asked for its replacement
-              next.
-            </p>
-          </Card>
-        )
+      )}
+
+      {swaps.length > 0 && (
+        <Card className="tight-card">
+          <div className="mini-head">
+            <h2 className="mini-title">Swapped ({swaps.length})</h2>
+            {!next && (
+              <button type="button" className="link-button" onClick={() => setSwaps([])}>
+                Clear
+              </button>
+            )}
+          </div>
+          <ul className="swap-log-list">
+            {swaps.map((s) => (
+              <li key={s.newCode}>
+                <span className="swap-new">{s.newCode}</span>
+                <span className="swap-old">replaced {s.oldCode}</span>
+                <span className="swap-where">{s.where}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
-  )
-}
-
-function reasonLabel(r: RemovalReason): string {
-  return REMOVAL_REASONS.find((x) => x.value === r)?.label ?? r
-}
-
-const strokeProps = {
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 1.7,
-  strokeLinecap: 'round' as const,
-  strokeLinejoin: 'round' as const,
-}
-
-function IconPin() {
-  return (
-    <svg viewBox="0 0 24 24" width="24" height="24" {...strokeProps}>
-      <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z" />
-      <circle cx="12" cy="10" r="2.6" />
-    </svg>
-  )
-}
-
-function IconScan() {
-  return (
-    <svg viewBox="0 0 24 24" width="24" height="24" {...strokeProps}>
-      <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
-      <path d="M4 12h16" />
-    </svg>
-  )
-}
-
-function IconSwap() {
-  return (
-    <svg viewBox="0 0 24 24" width="24" height="24" {...strokeProps}>
-      <path d="M7 4v13M3.5 13.5 7 17l3.5-3.5" />
-      <path d="M17 20V7M13.5 10.5 17 7l3.5 3.5" />
-    </svg>
   )
 }

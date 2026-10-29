@@ -7,7 +7,9 @@ the next time it is built.
 
 - App id: `com.circai.textrak` (**cannot be changed once published to Google Play**)
 - Min Android: 7.0 (API 24) · Target: Android 16 (API 36)
-- Camera: asked for the first time a user taps the scanner. Hardware scanners
+- Camera: Android's own permission dialog appears the moment a user first taps the
+  camera button (`MainActivity.java` bridges this). If it was refused, the app says so and shows an
+  **Open settings** button that goes to the app's page in Android Settings. Hardware scanners
   (Bluetooth rings, the Nordic ID HH83) need nothing — they type as a keyboard.
 
 > Keys and passwords are never stored in this repository. See "Signing" below.

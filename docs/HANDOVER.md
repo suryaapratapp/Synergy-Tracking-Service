@@ -126,9 +126,19 @@ How it works (`src/lib/offline/`):
   server by itself once signal returns (holding the PIN in memory only) and sends
   the queue. If it cannot (the PIN has since changed), the fitter is asked to
   sign in again; the saved jobs stay on the phone and go through afterwards.
-- **Banner and home card.** A strip under the header says *Offline* / *Sending N
-  saved jobs* / *N could not be saved*; tapping it lists them. The home screen
-  shows *Ready for no signal* once the site and product lists are on the phone.
+- **Update is compulsory after every sign-in** (`UpdateGate.tsx`): staff or guest,
+  nothing else can be done until the site and product lists on the phone have been
+  refreshed - a short "Updating…" screen with a running count. The first download
+  reads the product list in 16 parallel slices (about 7 s for 16,000 products on a
+  fast connection); later updates fetch only what changed. If it fails the fitter
+  can retry, or - only when the phone already holds an earlier copy - continue with
+  that. A phone with no signal and no copy has to be connected once. Reopening an
+  app that is already signed in updates first only if its data is over 12 hours old.
+- **Banner and Update button.** A strip under the header says *Offline* / *Sending N
+  saved jobs* / *N could not be saved*; tapping it lists them. The home screen has
+  just one control for staying ready: an **Update** button whose dot is green when
+  the data is under 12 hours old and amber when it is due a refresh. No counts, no
+  explanation.
 - **Leaving with unsent jobs.** *Exit* warns first. The jobs stay on the phone and
   are sent the next time someone signs in with signal.
 
@@ -252,27 +262,39 @@ reference and destination.
 > harmless (useful for onboarding stock labelled elsewhere) but it contradicts
 > the workflow above. Say the word and I will remove it.
 
-**Install** — the fitter picks Hospital → Floor → Ward → Bay once, then scans each
-product into that bay. Date and installer are recorded automatically and the
-change-due date is set to **180 days** (configurable in Users & settings, and
-overridable per install). The chosen location is remembered between visits.
+**Take down is the everyday screen: it takes the old curtain down and hangs the new
+one in a single flow.** Most visits are a swap, so *Take down* is the first button
+and tab, and *Install* is for curtains that are genuinely new.
 
-**Take down** — two routes, because both happen in practice. **By scan** is the
-default:
-- *By scan*: scan the product coming down; it is logged straight away with the
-  chosen reason.
-- *By location*: pick the bay, tick what is coming down, choose a reason, confirm.
+- **Method** (dropdown, *By scan* by default) and **Reason** (dropdown, *Expired*
+  by default; Soiled / Damaged) sit side by side at the top. A note is one tap away.
+- *By scan*: scan the old curtain; it is taken down at once with the chosen reason.
+- *By location*: choose where (below), tick what is coming down, confirm.
+- **The replacement is asked for straight away.** A *Replace* card shows what came
+  down and where, with one scan field and a *No replacement* button. The new curtain
+  goes **exactly where the old one was** - the fitter is never asked for the location
+  again, and it works the same whether the old one was recorded at a bay, a ward or
+  just a hospital. Several can come down first; they queue and are replaced in order.
+- One scan field does both jobs, decided by the product itself: a label that is still
+  hanging is taken down, one that is not is hung as the replacement. With a hardware
+  scanner or Tap-free on, a swap is **scan old, scan new** with nothing to tap between.
 
-**Swapping — take down and hang up in one motion.** The moment anything comes
-down, a *Hang the replacement* card appears on the same screen with the bay
-already known. Scan the new label and it goes up in that exact bay, recorded as
-the replacement for what came down. Several can come down first; they queue and
-are replaced in order.
+**Install** — new curtains only. Choose **Hospital** (required, red asterisk), then
+scan each new product. **Floor, Ward and Bay are optional** and appear one at a
+time, each only after the one above is chosen; stop at any level. The choice is
+remembered between visits. An install records the most specific place chosen
+(`installations.ward_id` / `bay_id` may be empty; the database needs only the
+hospital). The change-due date is set from the standard window (180 days, in Users
+& settings); the per-install override was removed to keep the screen simple.
 
-In *By scan* mode one scan field does both jobs, decided by the product itself:
-a label that is still hanging is taken down, a label that is not is hung as the
-replacement. With a hardware scanner or tap-free on, a swap is **scan old, scan
-new** with nothing to tap in between.
+**Location picker** (`LocationPicker.tsx`, used by both): Hospital first, then Floor
+and Ward side by side, then Bay. A single hospital (a hospital login) and a single
+floor are chosen automatically. Take down by location lists what is hanging at the
+chosen level - a whole hospital, floor, ward or bay - most overdue first, 100 at a
+time with the real total shown.
+
+**Errors are shown in red under the field that caused them**, large and
+unmissable, rather than as pop-ups that cover it.
 
 It works the other way too. After an install, a card shows what is in that bay
 (and how many are overdue) with **Take down in this bay**, which opens Take down

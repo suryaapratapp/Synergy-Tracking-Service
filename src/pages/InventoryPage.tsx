@@ -1,3 +1,4 @@
+import { describeBay } from '../lib/location'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, friendlyError, fetchAllRows } from '../lib/supabase'
@@ -378,7 +379,7 @@ export default function InventoryPage() {
                         <span className="product-code">{p.qr_code}</span>
                         <span className="product-loc">
                           {p.hospital_name
-                            ? `${p.hospital_name} · ${p.ward_name} · ${p.bay_name}`
+                            ? describeBay(p)
                             : 'Not installed'}
                         </span>
                       </span>

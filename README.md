@@ -77,6 +77,19 @@ Every user can change their own password under **My account** — current passwo
 new password and repeat, each with a *Show* toggle. The current password is
 re-checked before the change is accepted.
 
+## Everyday use
+
+The home screen is four small buttons and an **Update** button, with no scrolling.
+
+- **Take down** is the main one: scan the old curtain (method *By scan*, reason
+  *Expired* by default - both dropdowns), then scan the new one, which goes exactly where
+  the old one was. *By location* lists what is hanging at a hospital, floor, ward or bay.
+- **Install** is for new curtains: choose the **hospital** (required), then scan. Floor,
+  ward and bay are optional and appear one at a time after the hospital is chosen.
+- After every sign-in the app **updates itself first** so the phone is ready for a signal
+  outage; the **Update** button does the same on demand.
+- Errors appear in red right under the field that caused them.
+
 ## Working offline
 
 Install, take down, scanning and guest sign-in keep working with no signal — in a

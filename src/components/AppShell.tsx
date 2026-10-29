@@ -40,13 +40,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const primary: NavItem[] = isGuest
     ? [
         { to: '/', label: 'Home', icon: <IconHome />, end: true },
-        { to: '/install', label: 'Install', icon: <IconInstall /> },
         { to: '/takedown', label: 'Take down', icon: <IconTakedown /> },
+        { to: '/install', label: 'Install', icon: <IconInstall /> },
       ]
     : [
         { to: '/', label: 'Home', icon: <IconHome />, end: true },
-        { to: '/install', label: 'Install', icon: <IconInstall /> },
         { to: '/takedown', label: 'Take down', icon: <IconTakedown /> },
+        { to: '/install', label: 'Install', icon: <IconInstall /> },
         { to: '/inventory', label: 'Products', icon: <IconList /> },
       ]
 

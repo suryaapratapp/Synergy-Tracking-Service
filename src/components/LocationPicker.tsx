@@ -12,20 +12,24 @@ export interface LocationSelection {
 export const EMPTY_LOCATION: LocationSelection = { hospitalId: '', floor: '', wardId: '', bayId: '' }
 
 /**
- * Hospital → Floor → Ward → Bay, each level filtered by the one above.
- * Single-option levels are chosen automatically so a hospital login with one
- * site never has to tap a dropdown that has only one answer.
+ * Hospital first - the only one that must be filled in. Choosing it reveals
+ * Floor, then Ward, then Bay, each appearing only once the one above has an
+ * answer. Floor, ward and bay are optional: a fitter who just picks the
+ * hospital can carry straight on.
+ *
+ * A single hospital (a hospital login) and a single floor are chosen
+ * automatically, so there is never a dropdown with only one answer.
  */
 export default function LocationPicker({
   value,
   onChange,
-  requireBay = true,
   disabled = false,
+  hospitalLabel = 'Hospital',
 }: {
   value: LocationSelection
   onChange: (next: LocationSelection) => void
-  requireBay?: boolean
   disabled?: boolean
+  hospitalLabel?: string
 }) {
   const { hospitals, floorsFor, wardsFor, baysFor, loading } = useData()
 
@@ -33,7 +37,6 @@ export default function LocationPicker({
   const wards = value.hospitalId && value.floor ? wardsFor(value.hospitalId, value.floor) : []
   const bays = value.wardId ? baysFor(value.wardId) : []
 
-  // Collapse levels that have exactly one possible answer.
   useEffect(() => {
     if (loading) return
     if (!value.hospitalId && hospitals.length === 1) {
@@ -42,16 +45,12 @@ export default function LocationPicker({
     }
     if (value.hospitalId && !value.floor && floors.length === 1) {
       onChange({ ...value, floor: floors[0], wardId: '', bayId: '' })
-      return
     }
-    if (value.floor && !value.wardId && wards.length === 1) {
-      onChange({ ...value, wardId: wards[0].id, bayId: '' })
-    }
-  }, [loading, hospitals, floors, wards, value, onChange])
+  }, [loading, hospitals, floors, value, onChange])
 
   return (
     <div className="location-picker">
-      <Field label="Hospital" htmlFor="loc-hospital">
+      <Field label={hospitalLabel} htmlFor="loc-hospital" required className="loc-full">
         <select
           id="loc-hospital"
           className="input"
@@ -59,7 +58,7 @@ export default function LocationPicker({
           disabled={disabled || loading}
           onChange={(e) => onChange({ ...EMPTY_LOCATION, hospitalId: e.target.value })}
         >
-          <option value="">{loading ? 'Loading…' : 'Select hospital'}</option>
+          <option value="">{loading ? 'Loading…' : 'Choose hospital'}</option>
           {hospitals.map((h) => (
             <option key={h.id} value={h.id}>
               {h.name}
@@ -68,54 +67,57 @@ export default function LocationPicker({
         </select>
       </Field>
 
-      <Field label="Floor" htmlFor="loc-floor">
-        <select
-          id="loc-floor"
-          className="input"
-          value={value.floor}
-          disabled={disabled || !value.hospitalId}
-          onChange={(e) => onChange({ ...value, floor: e.target.value, wardId: '', bayId: '' })}
-        >
-          <option value="">Select floor</option>
-          {floors.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {value.hospitalId && floors.length > 0 && (
+        <Field label="Floor" htmlFor="loc-floor" className="loc-half loc-floor">
+          <select
+            id="loc-floor"
+            className="input"
+            value={value.floor}
+            disabled={disabled}
+            onChange={(e) => onChange({ ...value, floor: e.target.value, wardId: '', bayId: '' })}
+          >
+            <option value="">Choose floor</option>
+            {floors.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
 
-      <Field label="Ward" htmlFor="loc-ward">
-        <select
-          id="loc-ward"
-          className="input"
-          value={value.wardId}
-          disabled={disabled || !value.floor}
-          onChange={(e) => onChange({ ...value, wardId: e.target.value, bayId: '' })}
-        >
-          <option value="">Select ward</option>
-          {wards.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {value.floor && wards.length > 0 && (
+        <Field label="Ward" htmlFor="loc-ward" className="loc-half loc-ward">
+          <select
+            id="loc-ward"
+            className="input"
+            value={value.wardId}
+            disabled={disabled}
+            onChange={(e) => onChange({ ...value, wardId: e.target.value, bayId: '' })}
+          >
+            <option value="">Choose ward</option>
+            {wards.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
 
-      {requireBay && (
-        <Field label="Bay" htmlFor="loc-bay">
+      {value.wardId && bays.length > 0 && (
+        <Field label="Bay" htmlFor="loc-bay" className="loc-full">
           <select
             id="loc-bay"
             className="input"
             value={value.bayId}
-            disabled={disabled || !value.wardId}
+            disabled={disabled}
             onChange={(e) => onChange({ ...value, bayId: e.target.value })}
           >
-            <option value="">Select bay</option>
+            <option value="">Choose bay</option>
             {bays.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
-                {b.active_products > 0 ? ` · ${b.active_products} in place` : ''}
               </option>
             ))}
           </select>

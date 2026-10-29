@@ -4,10 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui'
-import { OfflineReadiness } from '../components/SyncStatus'
+import { UpdateButton } from '../components/SyncStatus'
+import { IconDashboard, IconInstall, IconList, IconLock, IconTakedown } from '../components/icons'
 import { useNetworkUsable } from '../lib/offline/network'
-import { IconArrow, IconDashboard, IconInstall, IconList, IconLock, IconTakedown } from '../components/icons'
-import { DEVELOPER } from '../lib/branding'
 import type { ProductCounts } from '../lib/types'
 
 function greeting(): string {
@@ -29,8 +28,9 @@ interface Tile {
 }
 
 /**
- * Four big buttons and nothing else: the whole app, one tap away. A fitter
- * working a ward should never have to hunt for where to go.
+ * Four compact buttons and the Update button, all on one screen with no
+ * scrolling. Take down is the everyday one: it removes the old curtain and
+ * hangs its replacement; Install is for curtains that are new.
  */
 export default function HomePage() {
   const { profile, isGuest, guestName } = useAuth()
@@ -61,16 +61,30 @@ export default function HomePage() {
     profile?.role === 'hospital'
       ? (hospitals.find((h) => h.id === profile.hospital_id)?.name ?? 'Your site')
       : isGuest
-        ? 'Guest · install and take down'
+        ? 'Guest'
         : 'All sites'
 
   const tiles: Tile[] = [
     {
+      to: '/takedown',
+      title: 'Take down',
+      sub: 'Remove and replace',
+      tone: 'takedown',
+      icon: <IconTakedown size={24} />,
+    },
+    {
+      to: '/install',
+      title: 'Install',
+      sub: 'New curtains',
+      tone: 'install',
+      icon: <IconInstall size={24} />,
+    },
+    {
       to: '/dashboard',
       title: 'Dashboard',
-      sub: 'In use, overdue, due soon, in stock',
+      sub: 'Overview',
       tone: 'dashboard',
-      icon: <IconDashboard size={30} />,
+      icon: <IconDashboard size={24} />,
       staffOnly: true,
       badge:
         counts && counts.overdue > 0
@@ -80,25 +94,11 @@ export default function HomePage() {
             : null,
     },
     {
-      to: '/install',
-      title: 'Install',
-      sub: 'Scan a label and hang it',
-      tone: 'install',
-      icon: <IconInstall size={30} />,
-    },
-    {
-      to: '/takedown',
-      title: 'Take down',
-      sub: 'Remove, and swap in one go',
-      tone: 'takedown',
-      icon: <IconTakedown size={30} />,
-    },
-    {
       to: '/inventory',
       title: 'Products',
-      sub: 'Every curtain and where it is',
+      sub: 'Every curtain',
       tone: 'products',
-      icon: <IconList size={30} />,
+      icon: <IconList size={24} />,
       staffOnly: true,
       badge: counts ? { text: `${counts.in_use} in use` } : null,
     },
@@ -107,9 +107,6 @@ export default function HomePage() {
   return (
     <div className="home">
       <section className="home-hero">
-        <p className="home-eyebrow">
-          {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </p>
         <h1>
           {greeting()}
           {firstName ? `, ${firstName}` : ''}
@@ -123,7 +120,7 @@ export default function HomePage() {
           const body = (
             <>
               <span className="tile-icon" aria-hidden="true">
-                {locked ? <IconLock size={26} /> : t.icon}
+                {locked ? <IconLock size={22} /> : t.icon}
               </span>
               {t.badge && !locked && (
                 <span className={t.badge.alert ? 'tile-badge tile-badge-alert' : 'tile-badge'}>{t.badge.text}</span>
@@ -134,11 +131,6 @@ export default function HomePage() {
                   {locked ? 'Staff only' : t.staffOnly && !usable ? 'Needs signal' : t.sub}
                 </span>
               </span>
-              {!locked && (
-                <span className="tile-go" aria-hidden="true">
-                  <IconArrow />
-                </span>
-              )}
             </>
           )
 
@@ -148,7 +140,7 @@ export default function HomePage() {
               type="button"
               className="home-tile tile-locked"
               aria-disabled="true"
-              onClick={() => toast('info', `${t.title} is for staff accounts. Guests can install and take down.`)}
+              onClick={() => toast('info', `${t.title} is for staff accounts.`)}
             >
               {body}
             </button>
@@ -160,9 +152,9 @@ export default function HomePage() {
         })}
       </div>
 
-      <OfflineReadiness />
-
-      <p className="credit">{DEVELOPER}</p>
+      <div className="home-foot">
+        <UpdateButton />
+      </div>
     </div>
   )
 }

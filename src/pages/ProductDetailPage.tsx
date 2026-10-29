@@ -151,7 +151,13 @@ export default function ProductDetailPage() {
           <p className="detail-location">
             <strong>{product.hospital_name}</strong>
             <br />
-            {product.floor} · {product.ward_name} · <strong>{product.bay_name}</strong>
+            {[product.floor, product.ward_name].filter(Boolean).join(' · ')}
+            {product.bay_name && (
+              <>
+                {product.ward_name ? ' · ' : ''}
+                <strong>{product.bay_name}</strong>
+              </>
+            )}
           </p>
           <ul className="kv-list">
             <li>
@@ -224,7 +230,7 @@ export default function ProductDetailPage() {
                 <div className="timeline-dot" aria-hidden="true" />
                 <div className="timeline-body">
                   <p className="timeline-title">
-                    {h.hospital_name} · {h.ward_name} · {h.bay_name}
+                    {[h.hospital_name, h.ward_name, h.bay_name].filter(Boolean).join(' · ')}
                   </p>
                   <p className="timeline-meta">
                     Installed {formatDateTime(h.installed_at)}
@@ -267,7 +273,7 @@ export default function ProductDetailPage() {
         }
       >
         <p className="sheet-lead">
-          <strong>{product.qr_code}</strong> at {product.ward_name} · {product.bay_name}
+          <strong>{product.qr_code}</strong> at {[product.ward_name, product.bay_name].filter(Boolean).join(' · ') || product.hospital_name}
         </p>
         <div className="reason-group" role="radiogroup" aria-label="Reason for removal">
           {REMOVAL_REASONS.map((r) => (

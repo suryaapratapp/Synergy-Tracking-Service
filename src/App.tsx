@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import HomePage from './pages/HomePage'
 import GuestNamePrompt from './pages/GuestNamePrompt'
+import UpdateGate from './components/UpdateGate'
 
 const InstallPage = lazy(() => import('./pages/InstallPage'))
 const TakedownPage = lazy(() => import('./pages/TakedownPage'))
@@ -28,7 +29,8 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if (!profile) return <FullPageSpinner />
   // A guest session with no name on this device (cleared storage) must say who they are first.
   if (isGuest && !guestName) return <GuestNamePrompt />
-  return <>{children}</>
+  // Nothing else can be done until the phone has been updated after signing in.
+  return <UpdateGate>{children}</UpdateGate>
 }
 
 /** Overview, products, reports and the rest are for named accounts, not guests. */

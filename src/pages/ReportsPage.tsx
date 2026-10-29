@@ -90,7 +90,8 @@ export default function ReportsPage() {
     for (const r of rows) {
       if (r.removal_reason) byReason.set(r.removal_reason, (byReason.get(r.removal_reason) ?? 0) + 1)
       byHospital.set(r.hospital_name, (byHospital.get(r.hospital_name) ?? 0) + 1)
-      byWard.set(`${r.ward_name}|${r.hospital_name}`, (byWard.get(`${r.ward_name}|${r.hospital_name}`) ?? 0) + 1)
+      const wardKey = `${r.ward_name ?? 'No ward recorded'}|${r.hospital_name}`
+      byWard.set(wardKey, (byWard.get(wardKey) ?? 0) + 1)
       if (r.removed_at) {
         serviceDays += r.days_in_service
         serviceCount += 1
@@ -345,7 +346,9 @@ export default function ReportsPage() {
                         </Link>
                       </td>
                       <td>
-                        <span className="cell-main">{r.ward_name} · {r.bay_name}</span>
+                        <span className="cell-main">
+                          {[r.ward_name, r.bay_name].filter(Boolean).join(' · ') || 'No ward recorded'}
+                        </span>
                         <span className="cell-sub">{r.hospital_name}</span>
                       </td>
                       <td>{formatDate(r.installed_at)}</td>
