@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { dueLabel, dueTone } from '../lib/format'
 import { STATUS_LABELS, type ItemStatus } from '../lib/types'
 
@@ -181,7 +182,8 @@ export function Sheet({
 
   if (!open) return null
 
-  return (
+  // Straight into <body>, so a frosted card around the caller can never confine it.
+  return createPortal(
     <div className="sheet-backdrop" onClick={onClose}>
       <div
         className="sheet"
@@ -199,7 +201,8 @@ export function Sheet({
         <div className="sheet-body">{children}</div>
         {footer && <div className="sheet-foot">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

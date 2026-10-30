@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext'
 import { DataProvider } from './context/DataContext'
 import { ToastProvider } from './components/ui'
 import './styles.css'
+import { appStarted, checkForAppUpdateInBackground } from './lib/appUpdate'
 
 /**
  * If the app cannot start, say so on the page. A crash before React mounts
@@ -46,6 +47,11 @@ try {
 } catch (err) {
   showStartupError(err instanceof Error ? err.message : String(err))
 }
+
+// Tell the live-update system this version started fine (or note that it was rolled back),
+// then quietly look for a newer one.
+void appStarted()
+checkForAppUpdateInBackground()
 
 // The installed Android app ships its own copy of the interface, so the web
 // build's offline cache is unnecessary there - and a stale one could outlive

@@ -501,3 +501,25 @@ The dashboard palette was validated for colour-blind separation and contrast
 against the white card surface (blue `#2a78d6`, orange `#eb6834`, aqua `#1baf7a`,
 yellow `#eda100`; critical red `#d03b3b` for overdue). Every series also carries a
 visible label or legend value, so colour is never the only signal.
+
+## 9. Fixing the app without a new APK (live updates)
+
+From version 1.8.0 the app can replace its own screens and logic ("web bundle") when someone taps **Update** on the home screen, signs in, or opens the app. Nothing is sent to a third party: the bundle is a zip in this repo (`ota/`), and the list of releases is the Supabase table `app_releases`.
+
+**To ship a fix**
+
+1. Fix the code. Raise `versionName` in `android/app/build.gradle` (for example 1.8.0 to 1.8.1).
+2. `./scripts/publish-update.sh "what changed"` builds `ota/tex-trak-<version>.zip` and prints one SQL statement.
+3. `git add ota && git commit && git push` (the zip must be online before step 4).
+4. Run the printed SQL in the Supabase SQL editor.
+
+Phones on an older version download the zip, check its sha256, restart into it, and the app confirms it started. If the new version fails to start within 15 seconds the app rolls back to the previous one by itself and does not try that version again.
+
+**To withdraw a bad release:** `update public.app_releases set published = false where version = '1.8.1';`
+
+**Limits**
+
+- Only the web part changes. Anything native (new permissions, plugins, `MainActivity.java`, Android settings) needs a new APK. Set `MIN_NATIVE` when publishing if a fix depends on a newer APK.
+- A phone must have the 1.8.0 (or later) APK installed once. Older APKs contain no updater.
+- Live updates were tested on an emulator (Update button, restart, persistence). The automatic rollback relies on the updater plugin and was not exercised.
+

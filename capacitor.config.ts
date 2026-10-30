@@ -12,6 +12,20 @@ const config: CapacitorConfig = {
     // https://localhost: a secure context, which the camera scanner requires.
     allowMixedContent: false,
   },
+  plugins: {
+    // Live updates of the app's screens (see src/lib/appUpdate.ts). Fully manual: the app
+    // decides when to check, from our own app_releases table - nothing is fetched from, or
+    // reported to, any outside service, so the vendor's default addresses are blanked.
+    CapacitorUpdater: {
+      autoUpdate: false,
+      updateUrl: '',
+      statsUrl: '',
+      channelUrl: '',
+      // A new version that has not said "I started fine" within this long is thrown away,
+      // and the phone goes back to the last version that worked.
+      appReadyTimeout: 15000,
+    },
+  },
 }
 
 export default config

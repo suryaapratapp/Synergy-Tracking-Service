@@ -8,8 +8,9 @@ import { useSyncExternalStore } from 'react'
 import { flush } from './queue'
 import { checkNow, networkUsable } from './network'
 import { syncSnapshot } from './snapshot'
+import { findAppUpdate } from '../appUpdate'
 
-export type UpdateResult = 'ok' | 'fail' | 'offline' | null
+export type UpdateResult = 'ok' | 'fail' | 'offline' | 'upgrading' | null
 
 interface UpdateState {
   busy: boolean
@@ -51,6 +52,17 @@ export async function runUpdate(reload: () => Promise<void>): Promise<UpdateResu
     const ok = await syncSnapshot()
     result = ok ? 'ok' : 'fail'
     if (ok) void flush()
+
+    // Also look for a newer version of the app itself (a fix published since this phone last updated).
+    if (ok) {
+      const app = await findAppUpdate()
+      if (app.state === 'ready') {
+        set({ busy: false, result: 'upgrading' })
+        await new Promise((r) => setTimeout(r, 1200))
+        await app.apply() // restarts into the new version
+        return 'upgrading'
+      }
+    }
   }
 
   set({ busy: false, result })

@@ -192,6 +192,14 @@ export function UpdateButton() {
           Updated just now. Ready to work offline.
         </p>
       )}
+      {result === 'upgrading' && (
+        <p className="update-msg update-msg-ok" role="status">
+          <span className="update-tick" aria-hidden="true">
+            ↻
+          </span>
+          Installing a new version. The app will restart in a moment.
+        </p>
+      )}
       {result === 'offline' && (
         <p className="update-msg update-msg-bad" role="alert">
           No signal. The phone will update when you are connected.

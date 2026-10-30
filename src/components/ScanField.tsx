@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { normaliseCode } from '../lib/format'
 import { canOpenSettings, ensureCamera, openAppSettings } from '../lib/nativeCamera'
 
@@ -173,18 +174,25 @@ export default function ScanField({
         <p className="scan-hint">{hint}</p>
       ) : null}
 
-      {camera && (
-        <Suspense fallback={<div className="scanner-overlay scanner-loading">Opening camera…</div>}>
-          <CameraScanner
-            continuous={tapFree}
-            onDetect={(code) => {
-              if (!tapFree) setCamera(false)
-              submit(code)
-            }}
-            onClose={() => setCamera(false)}
-          />
-        </Suspense>
-      )}
+      {/*
+        The scanner covers the whole screen, so it must sit directly in <body>. Inside a card
+        it would be confined to the card: a frosted (backdrop-filter) card turns `position: fixed`
+        into "fixed to this card".
+      */}
+      {camera &&
+        createPortal(
+          <Suspense fallback={<div className="scanner-overlay scanner-loading">Opening camera…</div>}>
+            <CameraScanner
+              continuous={tapFree}
+              onDetect={(code) => {
+                if (!tapFree) setCamera(false)
+                submit(code)
+              }}
+              onClose={() => setCamera(false)}
+            />
+          </Suspense>,
+          document.body,
+        )}
     </div>
   )
 }

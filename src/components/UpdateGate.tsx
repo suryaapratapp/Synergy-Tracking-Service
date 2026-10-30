@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { networkUsable } from '../lib/offline/network'
+import { findAppUpdate } from '../lib/appUpdate'
 import { cachedLocations, snapshotInfo, syncSnapshot } from '../lib/offline/snapshot'
 import BrandMark from './BrandMark'
 import { Spinner } from './ui'
@@ -57,8 +58,12 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
     setOffline(false)
     await reload()
     const ok = await syncSnapshot(setCount)
-    if (ok) finish()
-    else setState('failed')
+    if (ok) {
+      // Signing in is the safest moment to switch to a newer version of the app: nothing is in progress.
+      const app = await findAppUpdate()
+      if (app.state === 'ready') await app.apply()
+      else finish()
+    } else setState('failed')
   }, [offlineSession, reload, finish])
 
   useEffect(() => {
