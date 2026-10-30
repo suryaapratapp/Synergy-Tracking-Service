@@ -23,6 +23,20 @@ import { downloadCsv, toCsv } from '../lib/csv'
 import { formatDate } from '../lib/format'
 import type { ProductView } from '../lib/types'
 
+/** A code that exists only as a code (not a product), shaped like a product row so export and print can treat both alike. */
+function codeOnlyRow(code: string, productCode: string, productType: string, batch: string | null): ProductView {
+  return {
+    id: code,
+    qr_code: code,
+    product_code: productCode,
+    product_type: productType,
+    batch,
+    size: null,
+    colour: null,
+    registered_at: new Date().toISOString(),
+  } as unknown as ProductView
+}
+
 const PREVIEW_LIMIT = 24
 /** The most labels one run can ask for. */
 const MAX_LABELS = 50_000
@@ -48,6 +62,9 @@ export default function LabelsPage() {
   const stopRef = useRef(false)
   const [sheet, setSheet] = useState(0)
   const [loadedBatch, setLoadedBatch] = useState<string | null>(null)
+  /** Chosen on purpose every time - null until the person says. Making codes for use elsewhere must not register them by accident. */
+  const [registerMode, setRegisterMode] = useState<'yes' | 'no' | null>(null)
+  const [loadedRegistered, setLoadedRegistered] = useState(true)
   const [batch, setBatch] = useState('')
   const [size, setSize] = useState('')
   const [colour, setColour] = useState('')
@@ -57,7 +74,7 @@ export default function LabelsPage() {
   const [svgs, setSvgs] = useState<Map<string, string>>(new Map())
   const [sampleSvg, setSampleSvg] = useState<string>('')
   const [printing, setPrinting] = useState(false)
-  const [recent, setRecent] = useState<{ batch: string | null; n: number; at: string }[]>([])
+  const [recent, setRecent] = useState<{ batch: string; n: number; at: string; registered: boolean }[]>([])
 
   const [saved, setSaved] = useState<CodeFormat>(DEFAULT_CODE_FORMAT)
   const [draft, setDraft] = useState<CodeFormat>(DEFAULT_CODE_FORMAT)
@@ -118,10 +135,11 @@ export default function LabelsPage() {
   const loadRecent = useCallback(async () => {
     const { data } = await supabase.rpc('rpc_label_batches', { p_limit: 8 })
     setRecent(
-      ((data ?? []) as { batch: string; n: number; at: string }[]).map((r) => ({
+      ((data ?? []) as { batch: string; n: number; at: string; registered: boolean }[]).map((r) => ({
         batch: r.batch,
         n: Number(r.n),
         at: r.at,
+        registered: r.registered,
       })),
     )
   }, [])
@@ -131,14 +149,20 @@ export default function LabelsPage() {
   }, [loadRecent])
 
   const generate = async () => {
-    if (busy) return
-    if (
-      count >= CONFIRM_FROM &&
-      !window.confirm(
-        `Generate ${count.toLocaleString('en-GB')} labels? Their numbers are used up for good, even if you do not print them all.`,
-      )
-    )
-      return
+    if (busy || !registerMode) return
+    const register = registerMode === 'yes'
+    const n = count.toLocaleString('en-GB')
+    const ok = register
+      ? count < CONFIRM_FROM ||
+        window.confirm(`Generate and register ${n} labels? Their numbers are used up for good, even if you do not print them all.`)
+      : window.confirm(
+          `Make ${n} codes WITHOUT registering them?\n\nFitters will not be able to install them in Tex-Trak until they are registered. The numbers are still reserved, so they are never used again.`,
+        )
+    if (!ok) return
+
+    // A code-only run needs a name so it can be found again - the codes are not stored as products.
+    const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ')
+    const batchName = batch.trim() || (register ? null : `codes ${stamp}`)
 
     setBusy(true)
     stopRef.current = false
@@ -146,6 +170,7 @@ export default function LabelsPage() {
     setSvgs(new Map())
     setSheet(0)
     setLoadedBatch(null)
+    setLoadedRegistered(register)
     setProgress({ done: 0, total: count, kind: 'generate' })
 
     // Made in steps: each request is quick, and nothing is ever issued twice
@@ -154,19 +179,31 @@ export default function LabelsPage() {
     let failure: string | null = null
     while (rows.length < count && !stopRef.current) {
       const step = Math.min(STEP, count - rows.length)
-      const { data, error } = await supabase.rpc('rpc_generate_product_codes', {
+      const base = {
         p_product_code: normaliseProductCode(productCode) || DEFAULT_PRODUCT_CODE,
         p_product_type: productType.trim() || 'Curtain',
         p_count: step,
-        p_batch: batch.trim() || null,
-        p_size: size.trim() || null,
-        p_colour: colour.trim() || null,
-      })
-      if (error) {
-        failure = friendlyError(error)
-        break
+        p_batch: batchName,
       }
-      rows.push(...((data ?? []) as ProductView[]))
+      if (register) {
+        const { data, error } = await supabase.rpc('rpc_generate_product_codes', {
+          ...base,
+          p_size: size.trim() || null,
+          p_colour: colour.trim() || null,
+        })
+        if (error) {
+          failure = friendlyError(error)
+          break
+        }
+        rows.push(...((data ?? []) as ProductView[]))
+      } else {
+        const { data, error } = await supabase.rpc('rpc_reserve_codes', base)
+        if (error) {
+          failure = friendlyError(error)
+          break
+        }
+        rows.push(...((data ?? []) as { qr_code: string }[]).map((r) => codeOnlyRow(r.qr_code, base.p_product_code, base.p_product_type, batchName)))
+      }
       setProgress({ done: rows.length, total: count, kind: 'generate' })
     }
 
@@ -174,14 +211,15 @@ export default function LabelsPage() {
     setSvgs(await qrSvgMany(rows.slice(0, PREVIEW_LIMIT).map((r) => r.qr_code)))
     setProgress(null)
     setBusy(false)
+    if (!register && batchName) setLoadedBatch(batchName)
 
-    const made = `${rows.length.toLocaleString('en-GB')} label${rows.length === 1 ? '' : 's'}`
+    const made = `${rows.length.toLocaleString('en-GB')} ${register ? 'label' : 'code'}${rows.length === 1 ? '' : 's'}`
     if (failure) {
       toast('error', `Stopped after ${made}: ${failure}`)
     } else if (rows.length < count) {
       toast('info', `Stopped after ${made}. Those are saved and ready below.`)
     } else {
-      toast('success', `${made} generated`)
+      toast('success', register ? `${made} generated and registered` : `${made} made — not registered`)
     }
     void loadRecent()
   }
@@ -191,35 +229,48 @@ export default function LabelsPage() {
    * order, each page starting where the last ended - skipping ahead by offset
    * gets slower with every page and would take minutes for a big run.
    */
-  const loadBatch = async (name: string, total: number) => {
+  const loadBatch = async (name: string, total: number, registered: boolean) => {
     if (busy) return
     setBusy(true)
     setGenerated([])
     setSvgs(new Map())
     setSheet(0)
+    setLoadedRegistered(registered)
     setProgress({ done: 0, total, kind: 'load' })
 
     const rows: ProductView[] = []
     let after = ''
+    let offset = 0
     let failure: string | null = null
     for (;;) {
-      let q = supabase
-        .from('products')
-        .select('id,qr_code,product_code,product_type,batch,size,colour,registered_at')
-        .eq('batch', name)
-        .order('qr_code')
-        .limit(STEP)
-      if (after) q = q.gt('qr_code', after)
-      const { data, error } = await q
-      if (error) {
-        failure = friendlyError(error)
-        break
+      let page: ProductView[]
+      if (registered) {
+        let q = supabase
+          .from('products')
+          .select('id,qr_code,product_code,product_type,batch,size,colour,registered_at')
+          .eq('batch', name)
+          .order('qr_code')
+          .limit(STEP)
+        if (after) q = q.gt('qr_code', after)
+        const { data, error } = await q
+        if (error) {
+          failure = friendlyError(error)
+          break
+        }
+        page = (data ?? []) as ProductView[]
+        if (page.length) after = page[page.length - 1].qr_code
+      } else {
+        const { data, error } = await supabase.rpc('rpc_label_run_codes', { p_batch: name, p_offset: offset, p_limit: STEP })
+        if (error) {
+          failure = friendlyError(error)
+          break
+        }
+        page = ((data ?? []) as { qr_code: string }[]).map((r) => codeOnlyRow(r.qr_code, '', 'Curtain', name))
+        offset += page.length
       }
-      const page = (data ?? []) as ProductView[]
       rows.push(...page)
       setProgress({ done: rows.length, total, kind: 'load' })
       if (page.length < STEP) break
-      after = page[page.length - 1].qr_code
     }
 
     if (failure) toast('error', failure)
@@ -228,6 +279,29 @@ export default function LabelsPage() {
     setLoadedBatch(name)
     setProgress(null)
     setBusy(false)
+  }
+
+  /** Register a batch that was made as codes only. One run at a time, so each call is quick. */
+  const registerBatch = async (name: string) => {
+    if (busy) return
+    if (!window.confirm(`Register "${name}" now? Fitters will then be able to install these labels.`)) return
+    setBusy(true)
+    let failure: string | null = null
+    for (let guard = 0; guard < 200; guard++) {
+      const { data, error } = await supabase.rpc('rpc_register_label_batch', { p_batch: name })
+      if (error) {
+        failure = friendlyError(error)
+        break
+      }
+      if (Number(data) === 0) break
+    }
+    setBusy(false)
+    if (failure) toast('error', failure)
+    else {
+      toast('success', `"${name}" is registered`)
+      setLoadedRegistered(true)
+    }
+    void loadRecent()
   }
 
   const exportCsv = () => {
@@ -512,16 +586,45 @@ export default function LabelsPage() {
             )}
           </div>
         ) : (
-          <button
-            type="button"
-            className="btn btn-primary btn-lg btn-block"
-            onClick={() => void generate()}
-            disabled={busy || dirty || prefixBad || normaliseProductCode(productCode).length < 2}
-          >
-            {dirty
-              ? 'Save the new format first'
-              : `Generate ${count.toLocaleString('en-GB')} label${count === 1 ? '' : 's'}`}
-          </button>
+          <>
+            <div className="choice-group" role="radiogroup" aria-label="Register these labels?">
+              <p className="choice-q">
+                Register these labels in Tex-Trak? <span className="req">*</span>
+              </p>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={registerMode === 'yes'}
+                className={`choice ${registerMode === 'yes' ? 'is-on' : ''}`}
+                onClick={() => setRegisterMode('yes')}
+              >
+                <strong>Yes, register them</strong>
+                <small>Fitters can install and track them</small>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={registerMode === 'no'}
+                className={`choice ${registerMode === 'no' ? 'is-on is-no' : ''}`}
+                onClick={() => setRegisterMode('no')}
+              >
+                <strong>No, just make the codes</strong>
+                <small>For printing elsewhere. Numbers are reserved, nothing is registered</small>
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary btn-lg btn-block"
+              onClick={() => void generate()}
+              disabled={busy || dirty || prefixBad || !registerMode || normaliseProductCode(productCode).length < 2}
+            >
+              {dirty
+                ? 'Save the new format first'
+                : !registerMode
+                  ? 'Choose yes or no above'
+                  : `${registerMode === 'yes' ? 'Generate' : 'Make'} ${count.toLocaleString('en-GB')} ${registerMode === 'yes' ? 'label' : 'code'}${count === 1 ? '' : 's'}`}
+            </button>
+          </>
         )}
       </Card>
 
@@ -547,9 +650,19 @@ export default function LabelsPage() {
           />
         ) : (
           <>
+            {!loadedRegistered && (
+              <div className="unreg-note" role="status">
+                <strong>Not registered.</strong> These are codes only; fitters cannot install them in Tex-Trak.
+                {loadedBatch && (
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => void registerBatch(loadedBatch)} disabled={busy}>
+                    Register them now
+                  </button>
+                )}
+              </div>
+            )}
             {loadedBatch && (
               <p className="table-note">
-                Batch <strong>{loadedBatch}</strong> · {generated.length.toLocaleString('en-GB')} labels
+                Batch <strong>{loadedBatch}</strong> · {generated.length.toLocaleString('en-GB')} {loadedRegistered ? 'labels' : 'codes'}
               </p>
             )}
             <div className="import-actions">
@@ -613,8 +726,9 @@ export default function LabelsPage() {
           <ul className="kv-list">
             {recent.map((r) => (
               <li key={r.batch}>
-                <button type="button" className="link-button" onClick={() => void loadBatch(r.batch!, r.n)} disabled={busy}>
+                <button type="button" className="link-button" onClick={() => void loadBatch(r.batch, r.n, r.registered)} disabled={busy}>
                   {r.batch}
+                  {!r.registered && <span className="badge badge-queued unreg-badge">Not registered</span>}
                 </button>
                 <strong>
                   {r.n.toLocaleString('en-GB')} · {formatDate(r.at)}

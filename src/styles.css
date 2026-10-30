@@ -1391,3 +1391,216 @@ button.stat:hover { background: var(--raised); }
   flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
   background: #0ca30c; color: #fff; font-size: 0.78rem; font-weight: 800;
 }
+
+/* =====================================================================
+   Glass design layer
+   A soft gradient behind frosted, translucent surfaces. Text always sits on
+   a near-opaque surface so it stays easy to read on a ward under bright light.
+   ===================================================================== */
+
+:root {
+  --glass: rgba(255, 255, 255, 0.78);
+  --glass-strong: rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-shadow: 0 8px 28px -10px rgba(10, 60, 56, 0.28), 0 1px 3px rgba(10, 60, 56, 0.08);
+  --radius: 18px;
+}
+
+body {
+  background:
+    radial-gradient(520px 420px at 100% 0%, rgba(255, 138, 76, 0.13), transparent 70%),
+    radial-gradient(560px 460px at 0% 38%, rgba(74, 163, 255, 0.12), transparent 70%),
+    radial-gradient(520px 420px at 80% 100%, rgba(20, 184, 166, 0.14), transparent 70%),
+    #eef4f4;
+  background-attachment: fixed;
+}
+
+/* top bar: deep teal glass */
+.topbar {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(120deg, #0f766e 0%, #0b5f58 100%);
+  box-shadow: 0 6px 20px -8px rgba(5, 50, 46, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+.brand { gap: 10px; }
+.brand .brand-mark { flex: none; filter: drop-shadow(0 3px 6px rgba(0, 30, 28, 0.35)); border-radius: 10px; }
+
+.icon-btn {
+  display: grid; place-items: center; width: 38px; height: 38px; flex: none;
+  border-radius: 12px; cursor: pointer; color: #fff;
+  background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(6px);
+}
+.icon-btn:active { transform: scale(0.94); }
+.icon-btn:disabled { cursor: default; }
+.icon-btn.is-off { background: rgba(255, 190, 120, 0.28); border-color: rgba(255, 210, 160, 0.6); }
+.icon-btn.is-spinning svg { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* cards */
+.card, .glass-card {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+.glass-card { border-radius: 16px; padding: 12px 14px; }
+.step-card { background: var(--glass); }
+
+/* bottom tab bar: frosted */
+.tabbar {
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  border-top: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 -8px 24px -12px rgba(10, 60, 56, 0.25);
+}
+.tab.active .tab-icon, .tab[aria-current='page'] .tab-icon {
+  background: linear-gradient(135deg, #b9f3e8, #d7f9f2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8), 0 3px 8px -3px rgba(15, 118, 110, 0.5);
+}
+
+/* buttons */
+.btn-primary {
+  background: linear-gradient(180deg, #14948a 0%, #0f766e 100%);
+  box-shadow: 0 6px 14px -6px rgba(15, 118, 110, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.btn-primary:hover:not(:disabled) { background: linear-gradient(180deg, #118177 0%, #0c6860 100%); }
+.btn-primary:disabled { box-shadow: none; }
+.btn-ghost { background: rgba(255, 255, 255, 0.6); }
+.input { background: rgba(255, 255, 255, 0.95); border-color: #b8c8c8; transition: border-color .15s, box-shadow .15s; }
+.input:focus { box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.22); }
+
+/* sheets and toasts */
+.sheet { -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); background: var(--glass-strong); }
+.sheet-backdrop { background: rgba(8, 40, 38, 0.45); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.toast { -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.5); }
+
+/* the offline / sending strip */
+.sync-bar { display: flex; align-items: center; justify-content: center; gap: 8px; text-align: left; }
+
+/* connection pill (home + sign-in) */
+.net-pill {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  padding: 4px 11px; border-radius: 999px; font-size: 0.74rem; font-weight: 700;
+  background: rgba(255, 255, 255, 0.2); color: #fff; border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.net-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.3); }
+.net-pill.is-down { background: rgba(255, 170, 90, 0.3); border-color: rgba(255, 210, 160, 0.7); }
+.net-pill.is-down .net-dot { background: #fb923c; box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.35); }
+.login-brand .net-pill { background: #e8f7f3; color: #0b5f58; border-color: #b8e6dc; }
+.login-brand .net-pill.is-down { background: #fff1e0; color: #8a4a00; border-color: #f6c58a; }
+
+/* ----------------------------------------------------------- home */
+.home { padding-bottom: 12px; }
+.home-hero { padding: 4px 16px 44px; }
+.hero-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.home-grid { margin-top: -30px; }
+.home-tile { box-shadow: 0 14px 24px -14px var(--t2), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.home-tile::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 45%);
+}
+.tile-icon { background: rgba(255, 255, 255, 0.24); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32); backdrop-filter: blur(4px); }
+
+.home-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 0; max-width: 1000px; width: 100%; align-self: center; }
+
+.home-warn {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px;
+  background: #fff4e0; border: 1px solid #f2c986; color: #7a4600; font-size: 0.86rem; font-weight: 600; line-height: 1.35;
+}
+.home-warn svg { flex: none; }
+
+.today-card { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; text-align: center; padding: 10px 6px; }
+.today-stat { display: flex; flex-direction: column; gap: 2px; padding: 4px 2px; border-radius: 12px; }
+.today-stat strong { font-size: 1.55rem; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.today-stat span { font-size: 0.72rem; color: var(--ink-3); font-weight: 600; }
+.today-stat + .today-stat { border-left: 1px solid rgba(15, 118, 110, 0.14); }
+.today-stat.is-waiting { background: #fff4e0; }
+.today-stat.is-waiting strong { color: #b45309; }
+
+.recent-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.recent-empty { margin: 0; color: var(--ink-3); font-size: 0.86rem; }
+.recent-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.recent-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.recent-row + .recent-row { border-top: 1px solid rgba(15, 118, 110, 0.12); }
+.recent-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; flex: none; color: #fff; }
+.recent-icon.kind-takedown { background: linear-gradient(135deg, #f08243, #c2410c); }
+.recent-icon.kind-install, .recent-icon.kind-replace { background: linear-gradient(135deg, #14a091, #0b6b62); }
+.recent-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.recent-code { font-weight: 700; font-size: 0.88rem; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-meta { font-size: 0.74rem; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-status { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+.recent-status.st-sent { background: #e3f6e6; color: #0b5f1c; }
+.recent-status.st-waiting { background: #fff1d6; color: #8a4a00; }
+.recent-status.st-failed { background: #fde2e2; color: #a11d1d; }
+
+.home-foot { padding: 6px 0 4px; }
+
+/* ----------------------------------------------------------- sign-in */
+.login { position: relative; overflow: hidden; background: linear-gradient(165deg, #0f8277 0%, #0a4f4a 55%, #072f2d 100%); }
+.login-blobs span { position: absolute; border-radius: 50%; filter: blur(56px); opacity: 0.75; animation: drift 16s ease-in-out infinite alternate; }
+.login-blobs span:nth-child(1) { width: 300px; height: 300px; background: #ff8a4c; top: -90px; right: -80px; }
+.login-blobs span:nth-child(2) { width: 340px; height: 340px; background: #3f8fe6; bottom: -120px; left: -110px; animation-duration: 20s; }
+.login-blobs span:nth-child(3) { width: 220px; height: 220px; background: #7ef0d8; top: 38%; left: 55%; opacity: 0.4; animation-duration: 24s; }
+@keyframes drift { to { transform: translate(34px, -28px) scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .login-blobs span, .icon-btn.is-spinning svg, .update-dot.is-busy { animation: none; } }
+
+.login > * { position: relative; z-index: 1; }
+.login > .login-blobs { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.login-card {
+  background: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 30px 70px -20px rgba(0, 25, 24, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  gap: 16px; padding: 24px 20px 22px;
+}
+.login-brand { gap: 4px; }
+.login-brand h1 { font-size: 1.7rem; }
+.login-brand svg { filter: drop-shadow(0 10px 18px rgba(8, 70, 64, 0.45)); }
+.login-notice-jobs { background: #fff1d6; border-color: #f0b455; color: #6b3d00; text-align: left; }
+.login-perks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.login-perks li {
+  padding: 6px 12px; border-radius: 999px; font-size: 0.76rem; font-weight: 600; color: #fff;
+  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.28);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+
+/* QR labels: register or just make the codes */
+.choice-group { display: flex; flex-direction: column; gap: 8px; }
+.choice-q { margin: 0; font-size: 0.9rem; font-weight: 700; }
+.choice {
+  display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer;
+  padding: 11px 14px; border-radius: 14px; border: 2px solid #b8c8c8; background: rgba(255, 255, 255, 0.9);
+}
+.choice strong { font-size: 0.96rem; }
+.choice small { font-size: 0.78rem; color: var(--ink-3); }
+.choice.is-on { border-color: var(--brand); background: #e8f8f4; box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2); }
+.choice.is-on.is-no { border-color: #d97706; background: #fff4e0; box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.18); }
+.unreg-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 12px;
+  background: #fff4e0; border: 1px solid #f2c986; color: #7a4600; font-size: 0.86rem; line-height: 1.4;
+}
+.unreg-badge { margin-left: 8px; text-decoration: none; display: inline-block; }
+
+/* Recent: shows about four jobs, then scrolls. The bar is always visible so it is clear there is more. */
+.recent-list {
+  max-height: clamp(104px, calc(100dvh - 598px), 212px); overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 6px; margin-right: -4px;
+  scrollbar-width: thin; scrollbar-color: #7cb9b0 #e3efed;
+}
+.recent-list::-webkit-scrollbar { width: 7px; }
+.recent-list::-webkit-scrollbar-track { background: #e3efed; border-radius: 99px; }
+.recent-list::-webkit-scrollbar-thumb { background: #7cb9b0; border-radius: 99px; }
+.recent-list:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 8px; }
+
+/* Home: a little tighter so the list, the Update button and the tab bar all fit on one phone screen. */
+.home-tile { min-height: 92px; padding: 11px 12px; }
+.home-hero { padding-bottom: 38px; }
+.home-grid { gap: 8px; margin-top: -28px; }
+.home-body { gap: 8px; padding-top: 10px; }
+.today-card { padding: 8px 6px; }
+.recent-card { padding: 10px 12px; gap: 4px; }
+.home-foot { padding: 2px 0 0; }

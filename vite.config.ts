@@ -33,7 +33,17 @@ function precacheManifest(): Plugin {
   }
 }
 
+/** The app version shown in the app: the Android versionName, so the two always agree. */
+function appVersion(): string {
+  try {
+    return /versionName\s+"([^"]+)"/.exec(readFileSync(resolve('android/app/build.gradle'), 'utf8'))?.[1] ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [react(), precacheManifest()],
   server: { port: 5180, host: true },
   build: {

@@ -10,11 +10,12 @@ import { checkNow, useNetworkUsable } from '../lib/offline/network'
 type Mode = 'guest' | 'staff'
 const MODE_KEY = 'tex-trak.loginMode'
 
+/** Staff login is the default; a phone that has been switched to Guest remembers it. */
 function initialMode(): Mode {
   try {
-    return localStorage.getItem(MODE_KEY) === 'staff' ? 'staff' : 'guest'
+    return localStorage.getItem(MODE_KEY) === 'guest' ? 'guest' : 'staff'
   } catch {
-    return 'guest'
+    return 'staff'
   }
 }
 
@@ -63,11 +64,21 @@ export default function LoginPage() {
 
   return (
     <div className="login">
+      <div className="login-blobs" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+
       <div className="login-card">
         <div className="login-brand">
-          <BrandMark size={60} />
+          <BrandMark size={84} />
           <h1>{APP_NAME}</h1>
           <p>{APP_TAGLINE}</p>
+          <span className={`net-pill ${online ? 'is-up' : 'is-down'}`}>
+            <span className="net-dot" aria-hidden="true" />
+            {online ? 'Online' : 'No signal'}
+          </span>
         </div>
 
         <div className="login-tabs" role="tablist" aria-label="How do you want to sign in?">
@@ -92,10 +103,13 @@ export default function LoginPage() {
         </div>
 
         {(sync.pending > 0 || sync.failed > 0) && (
-          <p className="login-notice" role="status">
-            {sync.pending + sync.failed} job{sync.pending + sync.failed === 1 ? '' : 's'} done offline{' '}
-            {sync.pending + sync.failed === 1 ? 'is' : 'are'} saved on this phone and will be sent once you
-            sign in with a connection.
+          <p className="login-notice login-notice-jobs" role="status">
+            <strong>
+              {sync.pending + sync.failed} job{sync.pending + sync.failed === 1 ? '' : 's'} waiting to be sent.
+            </strong>{' '}
+            {online
+              ? 'Sign in as the same account and they will be sent straight away.'
+              : 'They are safe on this phone. Sign in when you have signal and they will be sent.'}
           </p>
         )}
         {!online && (
@@ -162,6 +176,12 @@ export default function LoginPage() {
           </form>
         )}
       </div>
+
+      <ul className="login-perks" aria-label="Highlights">
+        <li>Works with no signal</li>
+        <li>Scan with the camera</li>
+        <li>Secure sign-in</li>
+      </ul>
 
       <p className="credit">{DEVELOPER}</p>
     </div>

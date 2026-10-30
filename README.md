@@ -90,6 +90,11 @@ The home screen is four small buttons and an **Update** button, with no scrollin
   outage; the **Update** button does the same on demand.
 - Errors appear in red right under the field that caused them.
 
+**Icon and look.** The app icon is a frosted-glass card over soft coloured light, generated
+by `scripts/make-icons.py` (needs Pillow and numpy) into every Android and web size; the
+in-app mark (`BrandMark.tsx`) and `public/icon.svg` are the same design as SVG. Screens use a
+soft gradient background with frosted cards and a glass tab bar.
+
 ## Working offline
 
 Install, take down, scanning and guest sign-in keep working with no signal — in a

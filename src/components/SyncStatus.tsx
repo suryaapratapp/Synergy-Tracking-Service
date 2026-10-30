@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNetworkUsable } from '../lib/offline/network'
 import { dismissFailed, flush, retryFailed, useSyncState } from '../lib/offline/queue'
-import { onSnapshotChange, snapshotInfo, syncSnapshot } from '../lib/offline/snapshot'
+import { onSnapshotChange, snapshotInfo } from '../lib/offline/snapshot'
+import { runUpdate, useUpdateState } from '../lib/offline/update'
 import { relativeTime } from '../lib/format'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
-import { Sheet } from './ui'
+import { Sheet, useToast } from './ui'
+import { IconWifiOff } from './icons'
 
-function useSnapshotInfo() {
+export function useSnapshotInfo() {
   const [info, setInfo] = useState<{ syncedAt: string | null; count: number }>({ syncedAt: null, count: 0 })
   useEffect(() => {
     let live = true
@@ -34,20 +36,43 @@ export default function SyncStatus() {
   const info = useSnapshotInfo()
   const [open, setOpen] = useState(false)
 
+  const toast = useToast()
   const offline = !usable || offlineSession
   const waiting = sync.pending
+
+  // Jobs that have been waiting a while deserve a louder word: say how long.
+  const oldest = sync.pendingOps.reduce<number | null>((min, o) => {
+    const t = new Date(o.occurredAt).getTime()
+    return min === null || t < min ? t : min
+  }, null)
+  const ageMin = oldest === null ? 0 : Math.round((Date.now() - oldest) / 60_000)
+  const aged = ageMin >= 30 ? ` · oldest ${relativeTime(new Date(oldest!).toISOString()).replace(' ago', '')} old` : ''
+
+  const copyList = async () => {
+    const text = sync.pendingOps.map((o) => `${new Date(o.occurredAt).toLocaleString('en-GB')}  ${o.label}`).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      toast('success', 'List copied')
+    } catch {
+      toast('error', 'Could not copy the list')
+    }
+  }
 
   return (
     <>
       {offline && (
         <button type="button" className="sync-bar sync-offline" onClick={() => setOpen(true)}>
-          <strong>Offline.</strong> Jobs are saved on this phone and sent when you have signal
-          {waiting > 0 ? ` · ${waiting} waiting` : ''}
+          <IconWifiOff size={16} />
+          <span>
+            <strong>Offline.</strong> Your work is saved on this phone
+            {waiting > 0 ? ` · ${waiting} waiting${aged}` : ''}
+          </span>
         </button>
       )}
       {!offline && waiting > 0 && (
         <button type="button" className="sync-bar sync-sending" onClick={() => setOpen(true)}>
-          {sync.flushing ? 'Sending' : 'Waiting to send'} {waiting} saved job{waiting === 1 ? '' : 's'}…
+          {sync.flushing ? 'Sending' : 'Waiting to send'} {waiting} saved job{waiting === 1 ? '' : 's'}
+          {aged}…
         </button>
       )}
       {sync.failed > 0 && (
@@ -107,6 +132,9 @@ export default function SyncStatus() {
             >
               {sync.flushing ? 'Sending…' : 'Send now'}
             </button>
+            <button type="button" className="btn btn-ghost btn-block" onClick={() => void copyList()}>
+              Copy list
+            </button>
           </div>
         )}
 
@@ -128,16 +156,12 @@ const FRESH_MS = 12 * 60 * 60 * 1000
 /**
  * The one control on the home screen for staying ready for a signal outage:
  * it refreshes the site and product lists kept on the phone. The dot says
- * whether they are recent (green) or due a refresh (amber) - no counts, no
- * explanation.
+ * whether they are recent (green) or due a refresh (amber).
  */
 export function UpdateButton() {
-  const usable = useNetworkUsable()
   const info = useSnapshotInfo()
   const { reload } = useData()
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<'ok' | 'fail' | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const { busy, result } = useUpdateState()
   const [, tick] = useState(0)
 
   // The dot turns amber on its own as the data ages.
@@ -145,29 +169,16 @@ export function UpdateButton() {
     const t = setInterval(() => tick((n) => n + 1), 60_000)
     return () => clearInterval(t)
   }, [])
-  useEffect(() => () => clearTimeout(timer.current), [])
 
   const fresh = !!info.syncedAt && Date.now() - new Date(info.syncedAt).getTime() < FRESH_MS
-
-  const update = async () => {
-    setBusy(true)
-    setResult(null)
-    clearTimeout(timer.current)
-    await reload()
-    const ok = await syncSnapshot()
-    setBusy(false)
-    setResult(ok ? 'ok' : 'fail')
-    // Say what happened, then get out of the way.
-    timer.current = setTimeout(() => setResult(null), ok ? 8000 : 10_000)
-  }
 
   return (
     <div className="update-wrap">
       <button
         type="button"
         className={`update-btn ${result === 'ok' ? 'is-done' : fresh ? 'is-fresh' : 'is-stale'}`}
-        onClick={() => void update()}
-        disabled={busy || !usable}
+        onClick={() => void runUpdate(reload)}
+        disabled={busy}
       >
         <span className={`update-dot ${busy ? 'is-busy' : ''}`} aria-hidden="true" />
         {busy ? 'Updating…' : result === 'ok' ? 'Updated' : 'Update'}
@@ -179,6 +190,11 @@ export function UpdateButton() {
             ✓
           </span>
           Updated just now. Ready to work offline.
+        </p>
+      )}
+      {result === 'offline' && (
+        <p className="update-msg update-msg-bad" role="alert">
+          No signal. The phone will update when you are connected.
         </p>
       )}
       {result === 'fail' && (

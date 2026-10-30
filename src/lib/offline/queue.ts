@@ -112,6 +112,11 @@ export function newId(): string {
 
 /* --------------------------------------------------------------- the queue */
 
+/** Who the saved jobs on screen belong to ('guest' for the shared login). */
+export function getQueueOwner(): string {
+  return ownerKey ?? 'guest'
+}
+
 export function setQueueOwner(owner: string | null) {
   ownerKey = owner
   rebuild()

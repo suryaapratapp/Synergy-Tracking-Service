@@ -1,4 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Tex-Trak">
-  <!-- Placeholder app icon. No logo mark yet - drop in branding when it lands. -->
-  <rect width="512" height="512" rx="112" fill="#0f766e"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16b8a6"/><stop offset="1" stop-color="#093e3c"/></linearGradient>
+    <linearGradient id="veil" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset="1" stop-color="#fff" stop-opacity=".06"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".6" stop-color="#fff" stop-opacity=".25"/><stop offset="1" stop-color="#fff" stop-opacity=".12"/></linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="46"/></filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
+    <clipPath id="tile"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <g filter="url(#blur)">
+      <circle cx="410" cy="92" r="130" fill="#ff8a4c" opacity=".92"/>
+      <circle cx="86" cy="430" r="150" fill="#4aa3ff" opacity=".85"/>
+      <circle cx="140" cy="84" r="100" fill="#7ef0d8" opacity=".55"/>
+      <circle cx="436" cy="448" r="90" fill="#8f72e0" opacity=".5"/>
+    </g>
+    <rect x="86" y="96" width="340" height="340" rx="92" fill="#022" opacity=".35" filter="url(#soft)"/>
+    <rect x="86" y="86" width="340" height="340" rx="92" fill="url(#veil)"/>
+    <path d="M118 150a60 60 0 0 1 60-60h156a60 60 0 0 1 60 60 200 90 0 0 1-276 0Z" fill="#fff" opacity=".13"/>
+    <rect x="87" y="87" width="338" height="338" rx="91" fill="none" stroke="url(#rim)" stroke-width="4"/>
+    <g fill="none" stroke="#fff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M170 214v-34a10 10 0 0 1 10-10h34M298 170h34a10 10 0 0 1 10 10v34M342 298v34a10 10 0 0 1-10 10h-34M214 342h-34a10 10 0 0 1-10-10v-34"/>
+    </g>
+    <rect x="196" y="244" width="120" height="24" rx="12" fill="#ff9a5c" opacity=".8" filter="url(#soft)"/>
+    <rect x="200" y="246" width="112" height="20" rx="10" fill="#ffece0"/>
+  </g>
 </svg>

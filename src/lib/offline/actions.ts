@@ -22,6 +22,7 @@ import {
 } from './snapshot'
 import { dismissFailed, enqueue, flush, newId, removePending, takeResult, watch, type OpRpc, type SyncState } from './queue'
 import { networkUsable } from './network'
+import { logActivity } from './activity'
 
 /* ---------------------------------------------------------------- lookups */
 
@@ -163,6 +164,13 @@ async function installJob(args: {
       applyInstallLocal({ code: args.code, installationId: opId, place: args.place, dueDate, at }),
   })
 
+  void logActivity({
+    kind: args.rpc === 'rpc_install_replacement' ? 'replace' : 'install',
+    code: args.code,
+    place: out.queued ? shortPlace(args.place) : shortPlace({ hospitalName: out.data.hospital_name ?? args.place.hospitalName, wardName: out.data.ward_name, bayName: out.data.bay_name }),
+    opId,
+  })
+
   if (out.queued) {
     return {
       key: opId,
@@ -237,8 +245,9 @@ export async function takeDown(args: {
   const touched = [...codes, ...(args.idCodes ?? [])]
   const what = touched.length ? touched.join(', ') : `${ids.length} product${ids.length === 1 ? '' : 's'}`
 
+  const opId = newId()
   const out = await submit<number>({
-    opId: newId(),
+    opId,
     rpc: 'rpc_takedown',
     args: {
       ...(ids.length ? { p_installation_ids: ids } : {}),
@@ -251,6 +260,8 @@ export async function takeDown(args: {
     check: () => checkTakedown(codes),
     applyLocal: () => applyTakedownLocal({ installationIds: ids, codes: touched }),
   })
+  for (const code of touched.slice(0, 50)) void logActivity({ kind: 'takedown', code, opId })
+
   return out.queued
     ? { queued: true, count: Math.max(codes.length, ids.length) }
     : { queued: false, count: Number(out.data ?? 0) || Math.max(codes.length, ids.length) }

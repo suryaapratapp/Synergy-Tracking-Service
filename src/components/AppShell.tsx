@@ -1,9 +1,14 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { APP_NAME, DEVELOPER } from '../lib/branding'
 import { ROLE_LABELS } from '../lib/types'
-import { Sheet } from './ui'
+import { Sheet, useToast } from './ui'
+import BrandMark from './BrandMark'
+import { useData } from '../context/DataContext'
+import { flush } from '../lib/offline/queue'
+import { networkUsable, useNetworkUsable } from '../lib/offline/network'
+import { runUpdate, useUpdateState } from '../lib/offline/update'
 import SyncStatus from './SyncStatus'
 import { useSyncState } from '../lib/offline/queue'
 import {
@@ -16,6 +21,7 @@ import {
   IconMore,
   IconPin,
   IconQr,
+  IconRefresh,
   IconTag,
   IconTakedown,
   IconUser,
@@ -34,7 +40,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [renaming, setRenaming] = useState(false)
   const [draftName, setDraftName] = useState('')
   const navigate = useNavigate()
+  const location = useLocation()
+  const toast = useToast()
+  const { reload } = useData()
   const sync = useSyncState()
+  const usable = useNetworkUsable()
+  const { busy: updating } = useUpdateState()
+  const [exitOpen, setExitOpen] = useState(false)
+  const [sending, setSending] = useState(false)
 
   // A guest only ever sees the two jobs they can do.
   const primary: NavItem[] = isGuest
@@ -65,18 +78,37 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const roleLabel = profile ? ROLE_LABELS[profile.role] : 'Hospital'
   const who = isGuest ? guestName || 'Guest' : (profile?.full_name ?? profile?.username ?? roleLabel)
 
-  /** Leaving with unsent jobs is allowed - they stay on the phone - but never silent. */
-  const leave = () => {
-    const unsent = sync.pending
-    if (
-      unsent > 0 &&
-      !window.confirm(
-        `${unsent} saved job${unsent === 1 ? ' has' : 's have'} not been sent yet. They stay on this phone and are sent the next time someone signs in with signal. Exit anyway?`,
-      )
-    )
+  /**
+   * Leaving with unsent jobs is allowed - they stay on the phone - but never silent:
+   * with a connection they are sent first; without one the person is told plainly.
+   */
+  const leave = async () => {
+    if (sync.pending === 0) {
+      setMoreOpen(false)
+      void signOut()
       return
+    }
     setMoreOpen(false)
+    setExitOpen(true)
+    if (networkUsable()) {
+      setSending(true)
+      await flush(10_000)
+      setSending(false)
+    }
+  }
+
+  const exitAnyway = () => {
+    setExitOpen(false)
     void signOut()
+  }
+
+  const refresh = async () => {
+    const r = await runUpdate(reload)
+    // On Home the Update button already says how it went.
+    if (location.pathname === '/') return
+    if (r === 'ok') toast('success', 'Updated just now. Ready to work offline.')
+    else if (r === 'offline') toast('info', 'No signal. Saved jobs will be sent when you are connected.')
+    else if (r === 'fail') toast('error', 'Could not update. Check your signal and try again.')
   }
 
   const saveName = (e: FormEvent) => {
@@ -90,6 +122,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <div className="shell">
       <header className="topbar">
         <button className="brand" onClick={() => navigate('/')} type="button">
+          <BrandMark size={34} />
           <span className="brand-text">
             <strong>{APP_NAME}</strong>
             <small>{isGuest ? `Guest · ${who}` : who}</small>
@@ -106,7 +139,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         <div className="topbar-right">
           <span className={`role-chip role-${profile?.role ?? 'hospital'}`}>{roleLabel}</span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={leave}>
+          <button
+            type="button"
+            className={`icon-btn ${updating ? 'is-spinning' : ''} ${usable ? '' : 'is-off'}`}
+            onClick={() => void refresh()}
+            disabled={updating}
+            aria-label="Refresh and update"
+            title="Refresh"
+          >
+            <IconRefresh />
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void leave()}>
             {isGuest ? 'Exit' : 'Sign out'}
           </button>
         </div>
@@ -202,11 +245,58 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <button
           type="button"
           className="btn btn-block btn-danger-ghost"
-          onClick={leave}
+          onClick={() => void leave()}
         >
           {isGuest ? 'Exit guest mode' : 'Sign out'}
         </button>
-        <p className="credit">{DEVELOPER}</p>
+        <p className="credit">
+          {DEVELOPER} · v{__APP_VERSION__}
+        </p>
+      </Sheet>
+
+      <Sheet open={exitOpen} title="Jobs not sent yet" onClose={() => setExitOpen(false)}>
+        {sending ? (
+          <p className="sheet-lead">Sending your saved jobs…</p>
+        ) : sync.pending === 0 ? (
+          <>
+            <p className="sheet-lead">All your jobs have been sent. You are safe to leave.</p>
+            <button type="button" className="btn btn-primary btn-block btn-lg" onClick={exitAnyway}>
+              {isGuest ? 'Exit' : 'Sign out'}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="sheet-lead">
+              <strong>
+                {sync.pending} job{sync.pending === 1 ? '' : 's'}
+              </strong>{' '}
+              {sync.pending === 1 ? 'is' : 'are'} saved on this phone but {sync.pending === 1 ? 'has' : 'have'} not reached
+              the server yet.
+              {usable
+                ? ' Try sending now.'
+                : ' There is no signal. They stay safe on the phone and are sent the next time someone signs in with signal.'}
+            </p>
+            {usable && (
+              <button
+                type="button"
+                className="btn btn-primary btn-block btn-lg"
+                onClick={async () => {
+                  setSending(true)
+                  await flush(10_000)
+                  setSending(false)
+                }}
+              >
+                Send now
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost btn-block" onClick={() => setExitOpen(false)}>
+              Stay signed in
+            </button>
+            <button type="button" className="btn btn-block btn-danger-ghost" onClick={exitAnyway}>
+              {isGuest ? 'Exit anyway' : 'Sign out anyway'}
+            </button>
+          </>
+        )}
       </Sheet>
     </div>
   )

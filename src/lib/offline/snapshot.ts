@@ -95,8 +95,17 @@ async function refreshConfig(): Promise<string | null> {
   )
   if (error) throw error
   if (!data) return null
-  await kvSet(CONFIG_KEY, data)
-  return (data as { server_time?: string }).server_time ?? null
+  const serverTime = (data as { server_time?: string }).server_time ?? null
+  // How far the phone's clock is from the server's, so a wrong clock can be pointed out.
+  const skew = serverTime ? new Date(serverTime).getTime() - Date.now() : 0
+  await kvSet(CONFIG_KEY, { ...(data as object), skew_ms: skew })
+  return serverTime
+}
+
+/** Phone clock minus server clock, in ms, as last measured (positive = the phone is slow). Null if never measured. */
+export async function clockSkewMs(): Promise<number | null> {
+  const c = await kvGet<{ skew_ms?: number }>(CONFIG_KEY)
+  return typeof c?.skew_ms === 'number' ? c.skew_ms : null
 }
 
 /**

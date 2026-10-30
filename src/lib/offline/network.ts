@@ -14,7 +14,9 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../config'
 import { deviceFetch } from './deviceFetch'
 
 const COOL_OFF_MS = 20_000
-const PROBE_EVERY_MS = 10_000
+/** How often to check while things are fine, and while they are not (so a return is noticed quickly). */
+const HEARTBEAT_UP_MS = 8_000
+const HEARTBEAT_DOWN_MS = 4_000
 
 let failedAt = 0
 const listeners = new Set<() => void>()
@@ -23,38 +25,60 @@ export function reportNetwork(ok: boolean) {
   const wasDown = failedAt !== 0
   failedAt = ok ? 0 : Date.now()
   if (wasDown === ok) listeners.forEach((l) => l())
-  if (!ok) startProbing()
 }
 
-let probeTimer: ReturnType<typeof setInterval> | null = null
-
 /**
- * While the network is marked down, quietly knock on the server's door so the
- * app notices the moment it is back - even when nothing else is being sent.
- * Any HTTP answer at all (even a refusal) proves the server can be reached.
+ * A steady, cheap check that the server can be reached, so the "Offline" banner
+ * appears within seconds of the signal dropping - even when the person is just
+ * looking at the screen and nothing is being sent - and clears as soon as it
+ * returns. Any HTTP answer at all (even a refusal) proves the server is reachable.
+ * Runs only while the app is on screen.
  */
-function startProbing() {
-  if (probeTimer || typeof window === 'undefined') return
-  probeTimer = setInterval(async () => {
-    if (failedAt === 0) {
-      clearInterval(probeTimer!)
-      probeTimer = null
-      return
-    }
-    if (navigator.onLine === false) return
-    try {
+let heartbeat: ReturnType<typeof setTimeout> | null = null
+let beating = false
+
+async function beat() {
+  if (beating) return
+  beating = true
+  try {
+    if (navigator.onLine === false) {
+      reportNetwork(false)
+    } else {
       const ctl = new AbortController()
-      const timer = setTimeout(() => ctl.abort(), 5000)
-      await deviceFetch(`${SUPABASE_URL}/auth/v1/health`, {
-        headers: { apikey: SUPABASE_ANON_KEY },
-        cache: 'no-store',
-        signal: ctl.signal,
-      }).finally(() => clearTimeout(timer))
-      reportNetwork(true)
-    } catch {
-      /* still down */
+      const timer = setTimeout(() => ctl.abort(), 4000)
+      try {
+        await deviceFetch(`${SUPABASE_URL}/auth/v1/health`, {
+          headers: { apikey: SUPABASE_ANON_KEY },
+          cache: 'no-store',
+          signal: ctl.signal,
+        })
+        reportNetwork(true)
+      } catch {
+        reportNetwork(false)
+      } finally {
+        clearTimeout(timer)
+      }
     }
-  }, PROBE_EVERY_MS)
+  } finally {
+    beating = false
+  }
+}
+
+function schedule() {
+  if (heartbeat) clearTimeout(heartbeat)
+  heartbeat = setTimeout(async () => {
+    if (document.visibilityState === 'visible') await beat()
+    schedule()
+  }, failedAt !== 0 ? HEARTBEAT_DOWN_MS : HEARTBEAT_UP_MS)
+}
+
+export function startHeartbeat() {
+  if (typeof window === 'undefined' || heartbeat) return
+  void beat()
+  schedule()
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void beat()
+  })
 }
 
 /** One quick check of whether the server can be reached right now (used when no request is in flight to tell us). */
@@ -109,8 +133,9 @@ export function onNetworkChange(fn: () => void): () => void {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => reportNetwork(true))
+  window.addEventListener('online', () => void beat())
   window.addEventListener('offline', () => reportNetwork(false))
+  startHeartbeat()
 }
 
 /** Does this error mean "could not reach the server" rather than "the server said no"? */

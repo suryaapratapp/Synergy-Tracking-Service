@@ -125,3 +125,41 @@ export function IconArrow({ size = 20 }: { size?: number }) {
     </svg>
   )
 }
+
+export function IconRefresh({ size = 20 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 11a8 8 0 0 0-14.5-4.2L4 8.5" />
+      <path d="M4 4v4.5h4.5" />
+      <path d="M4 13a8 8 0 0 0 14.5 4.2L20 15.5" />
+      <path d="M20 20v-4.5h-4.5" />
+    </svg>
+  )
+}
+
+export function IconWifiOff({ size = 18 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 8.8a15 15 0 0 1 4.2-2.5M22 8.8A15 15 0 0 0 10 5.1M5 12.5a10 10 0 0 1 3.4-2M19 12.5a10 10 0 0 0-4.6-2.4M8.5 16.2a5 5 0 0 1 4.6-1.3" />
+      <circle cx="12" cy="19.5" r="1" fill="currentColor" />
+      <path d="M3 3l18 18" />
+    </svg>
+  )
+}
+
+export function IconCheck({ size = 18 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </svg>
+  )
+}
+
+export function IconClock({ size = 18 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  )
+}

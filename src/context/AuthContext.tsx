@@ -27,6 +27,7 @@ import {
 } from '../lib/offline/identity'
 import { isNetworkError, networkUsable, onNetworkChange, orAfter } from '../lib/offline/network'
 import { setQueueOwner } from '../lib/offline/queue'
+import { activityOwnerChanged } from '../lib/offline/activity'
 import { syncSnapshot } from '../lib/offline/snapshot'
 import type { Profile } from '../lib/types'
 
@@ -184,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveIdentity(profile)
     // Also re-runs when the server session appears, which sends anything saved while offline.
     setQueueOwner(profile.role === 'guest' ? 'guest' : profile.id)
+    activityOwnerChanged()
   }, [profile, session])
 
   /* Keep the phone's copy of the product list fresh while there is a connection. */

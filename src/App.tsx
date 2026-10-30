@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage'
 import HomePage from './pages/HomePage'
 import GuestNamePrompt from './pages/GuestNamePrompt'
 import UpdateGate from './components/UpdateGate'
+import ReminderManager from './components/ReminderManager'
 
 const InstallPage = lazy(() => import('./pages/InstallPage'))
 const TakedownPage = lazy(() => import('./pages/TakedownPage'))
@@ -72,6 +73,8 @@ export default function App() {
   if (loading) return <FullPageSpinner />
 
   return (
+    <>
+    <ReminderManager />
     <Routes>
       <Route path="/login" element={signedIn ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route
@@ -164,5 +167,6 @@ export default function App() {
         }
       />
     </Routes>
+    </>
   )
 }

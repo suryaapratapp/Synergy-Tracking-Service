@@ -145,6 +145,44 @@ How it works (`src/lib/offline/`):
 - **Leaving with unsent jobs.** *Exit* warns first. The jobs stay on the phone and
   are sent the next time someone signs in with signal.
 
+### If a fitter forgets to open the app, or exits before the jobs are sent
+
+Saved jobs live on the phone (not in the app's memory), so they survive the app being
+closed, the phone restarting, and even an app update. They are sent whenever the app is
+open and has signal, and several things make sure nobody forgets them:
+
+- **Reminder notification** (`reminders.ts`, Android app): while any job is waiting, the
+  phone shows *"N jobs saved on this phone - open Tex-Trak when you have signal"*, first
+  after 15 minutes and then every hour, until the queue is empty (it cancels itself). It
+  asks for notification permission the first time a job is saved. It is deliberately not
+  an exact alarm (that is a restricted Android permission), so it may arrive a little late.
+- **Exit / Sign out is guarded.** With jobs waiting: if there is signal, they are sent
+  first; if not, a sheet says plainly how many jobs have not reached the server, with
+  *Stay signed in* or *Exit anyway* (the jobs stay on the phone).
+- **The sign-in screen says so.** If jobs from an earlier session are waiting it shows an
+  amber note ("N jobs waiting to be sent. Sign in as the same account and they will be sent
+  straight away"). The shared guest login sends any guest's jobs and each job keeps the name
+  of whoever did it. A staff member's jobs wait for that staff member's own sign-in.
+- **The banner grows louder with age** ("oldest 3 h old"), and the panel behind it has
+  *Send now* and *Copy list* (the list as text, as a last-resort record).
+- **Home shows the person's own recent jobs** with *Sent / Waiting / Not saved* beside each.
+- **What cannot be saved:** if the app's data is cleared or the app is uninstalled before
+  jobs are sent, they are lost with it - Android removes an app's data on uninstall.
+
+### Noticing the signal drop
+
+`network.ts` runs a cheap heartbeat (every 8 s while things are fine, every 4 s while they
+are not, only while the app is on screen), so the *Offline* banner and the Online/Offline
+pill appear within seconds even when the person is just looking at the screen - including
+Wi-Fi that is connected but has no internet - and clear as soon as it returns. The refresh
+icon in the header forces an immediate re-check as well as an update.
+
+### Other safeguards on the home screen
+
+- A **clock warning** appears if the phone's clock is more than 3 minutes out from the
+  server's (jobs are timed by the phone's clock, and the server clamps wild values).
+- A **stale data note** appears if the phone's product list is more than a day old.
+
 Not covered: Dashboard / Products / Reports (they need live data), and a *brand
 new* label that was registered after the phone's last sync is accepted offline
 without a check and verified by the server when it connects.
@@ -233,6 +271,16 @@ Three layers keep a number from ever being issued twice:
 Each run takes the next numbers from the end of the previous run of the same
 format. Both guards were tested by lowering, deleting and truncating the counter,
 by deliberately losing it, and by registering a code far ahead.
+
+**Register, or just make the codes.** Every run asks *"Register these labels in Tex-Trak?"*
+and the person must choose (nothing is preselected, so codes made only for printing
+elsewhere are never registered by accident). *Yes* creates the products as before. *No*
+(`rpc_reserve_codes`) reserves the numbers - they are never reused - and records the run in
+`label_runs`, but creates no products; a fitter who scans such a code is told it is not
+registered yet. A code-only run is given a name if the person leaves it blank, appears under
+*Recent batches* marked *Not registered*, can be reloaded to export or print again
+(`rpc_label_run_codes`), and can be registered later with *Register them now*
+(`rpc_register_label_batch`, one run of up to 1,000 at a time).
 
 **Big runs (up to 50,000).** A request is limited to 8 seconds and a response to
 1,000 rows, so `rpc_generate_product_codes` makes at most 1,000 per call (set-based,
